@@ -1,69 +1,128 @@
-import { getQuestionById } from '@/lib/data';
-import { notFound } from 'next/navigation';
+'use client';
+
+import { notFound, useParams } from 'next/navigation';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import AnswerCard from '@/components/answer-card';
-import { Clock, MessageSquare, User } from 'lucide-react';
-import type { Metadata } from 'next';
+import { Clock, LoaderCircle, MessageSquare } from 'lucide-react';
+import { useFirestore, useDoc, useCollection, useUser, useMemoFirebase } from '@/firebase';
+import { doc, collection, query, where, orderBy } from 'firebase/firestore';
+import type { Question, Answer, User } from '@/lib/types';
+import { useForm } from 'react-hook-form';
+import * as z from 'zod';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { Form, FormControl, FormField, FormItem, FormMessage } from '@/components/ui/form';
+import { postAnswer } from '@/app/actions';
+import { useToast } from '@/hooks/use-toast';
+import { Skeleton } from '@/components/ui/skeleton';
 
-type Props = {
-  params: { id: string };
+const answerFormSchema = z.object({
+  content: z.string().min(10, 'Your answer must be at least 10 characters long.'),
+});
+
+
+const QuestionDetails = ({ question, author }: { question: Question, author: User | null }) => {
+    return (
+        <div className="space-y-4">
+            <h1 className="text-4xl font-bold font-headline text-foreground">{question.title}</h1>
+            <div className="flex items-center space-x-4 text-sm text-muted-foreground">
+                <div className="flex items-center gap-2">
+                    <Avatar className="h-8 w-8">
+                        {author?.photoURL && <AvatarImage src={author.photoURL} alt={author.username} />}
+                        <AvatarFallback>{author?.username?.charAt(0) ?? 'U'}</AvatarFallback>
+                    </Avatar>
+                    <span>{author?.username ?? 'Anonymous'}</span>
+                </div>
+                <Separator orientation="vertical" className="h-4" />
+                <div className="flex items-center gap-1.5">
+                    <Clock className="h-4 w-4" />
+                    <span>Asked {question.creationDate ? new Date(question.creationDate.toDate()).toLocaleDateString() : '...'}</span>
+                </div>
+            </div>
+            <div className="flex flex-wrap gap-2">
+                {question.tags.map((tag) => (
+                    <Badge key={tag} variant="secondary">{tag}</Badge>
+                ))}
+            </div>
+        </div>
+    );
 };
 
-export async function generateMetadata({ params }: Props): Promise<Metadata> {
-  const question = await getQuestionById(params.id);
+const QuestionSkeleton = () => (
+    <div className="space-y-4">
+        <Skeleton className="h-10 w-3/4" />
+        <div className="flex items-center space-x-4">
+            <Skeleton className="h-8 w-8 rounded-full" />
+            <Skeleton className="h-6 w-24" />
+        </div>
+        <div className="flex gap-2">
+            <Skeleton className="h-6 w-20" />
+            <Skeleton className="h-6 w-20" />
+            <Skeleton className="h-6 w-20" />
+        </div>
+    </div>
+)
 
-  if (!question) {
-    return {
-      title: 'Question Not Found',
-    };
+
+export default function QuestionPage() {
+  const { id } = useParams();
+  const firestore = useFirestore();
+  const { user, isUserLoading } = useUser();
+  const { toast } = useToast();
+
+  const questionRef = useMemoFirebase(() => firestore ? doc(firestore, 'questions', id as string) : null, [firestore, id]);
+  const { data: question, isLoading: isQuestionLoading } = useDoc<Question>(questionRef);
+
+  const authorRef = useMemoFirebase(() => (firestore && question?.userId) ? doc(firestore, 'users', question.userId) : null, [firestore, question?.userId]);
+  const { data: author } = useDoc<User>(authorRef);
+
+  const answersQuery = useMemoFirebase(() => (firestore && id) ? query(collection(firestore, 'answers'), where('questionId', '==', id), orderBy('submissionDate', 'desc')) : null, [firestore, id]);
+  const { data: answers, isLoading: areAnswersLoading } = useCollection<Answer>(answersQuery);
+
+  const form = useForm<z.infer<typeof answerFormSchema>>({
+    resolver: zodResolver(answerFormSchema),
+    defaultValues: {
+      content: '',
+    },
+  });
+
+  async function onSubmit(values: z.infer<typeof answerFormSchema>) {
+    if (!user) {
+      toast({ variant: 'destructive', title: 'You must be logged in to post an answer.' });
+      return;
+    }
+    const formData = new FormData();
+    formData.append('content', values.content);
+    formData.append('questionId', id as string);
+    formData.append('userId', user.uid);
+
+    const result = await postAnswer(formData);
+
+    if (result.success) {
+      toast({ title: 'Answer posted!' });
+      form.reset();
+    } else {
+      toast({ variant: 'destructive', title: 'Failed to post answer.', description: result.error });
+    }
   }
 
-  return {
-    title: `${question.title} | ShareFlow`,
-    description: question.description.substring(0, 150),
-  };
-}
-
-export default async function QuestionPage({ params }: { params: { id: string } }) {
-  const question = await getQuestionById(params.id);
+  if (isQuestionLoading || isUserLoading) {
+    return <QuestionSkeleton />;
+  }
 
   if (!question) {
     notFound();
   }
 
-  const sortedAnswers = [...question.answers].sort((a, b) => b.votes - a.votes);
+  const sortedAnswers = answers ? [...answers].sort((a, b) => (b.upvotes - b.downvotes) - (a.upvotes - a.downvotes)) : [];
 
   return (
     <div className="max-w-5xl mx-auto">
-      <div className="space-y-4">
-        <h1 className="text-4xl font-bold font-headline text-foreground">{question.title}</h1>
-
-        <div className="flex items-center space-x-4 text-sm text-muted-foreground">
-          <div className="flex items-center gap-2">
-            <Avatar className="h-8 w-8">
-              <AvatarImage src={question.author.avatarUrl} alt={question.author.name} />
-              <AvatarFallback>{question.author.name.charAt(0)}</AvatarFallback>
-            </Avatar>
-            <span>{question.author.name}</span>
-          </div>
-          <Separator orientation="vertical" className="h-4" />
-          <div className="flex items-center gap-1.5">
-            <Clock className="h-4 w-4" />
-            <span>Asked {new Date(question.createdAt).toLocaleDateString()}</span>
-          </div>
-        </div>
-
-        <div className="flex flex-wrap gap-2">
-          {question.tags.map((tag) => (
-            <Badge key={tag} variant="secondary">{tag}</Badge>
-          ))}
-        </div>
-      </div>
-
+      <QuestionDetails question={question} author={author} />
+      
       <Separator className="my-8" />
 
       <div className="prose prose-lg dark:prose-invert max-w-none text-foreground/90">
@@ -75,9 +134,14 @@ export default async function QuestionPage({ params }: { params: { id: string } 
       <div className="space-y-8">
         <h2 className="text-2xl font-bold font-headline flex items-center gap-2">
           <MessageSquare className="h-6 w-6 text-primary" />
-          {question.answers.length} {question.answers.length === 1 ? 'Answer' : 'Answers'}
+          {answers?.length || 0} {answers?.length === 1 ? 'Answer' : 'Answers'}
         </h2>
-
+        {areAnswersLoading && (
+            <div className="space-y-6">
+                <Skeleton className="h-40 w-full" />
+                <Skeleton className="h-40 w-full" />
+            </div>
+        )}
         <div className="space-y-6">
           {sortedAnswers.map((answer, index) => (
             <AnswerCard key={answer.id} answer={answer} questionTitle={question.title} isTopAnswer={index === 0} />
@@ -89,13 +153,33 @@ export default async function QuestionPage({ params }: { params: { id: string } 
       
       <div className="space-y-6">
          <h3 className="text-2xl font-bold font-headline">Your Answer</h3>
-        {/* In a real app, this form would be handled by a server action */}
-        <form className="grid gap-4">
-          <Textarea className="min-h-[150px]" placeholder="Write your answer here..." />
-          <div className="flex justify-end">
-            <Button>Post Your Answer</Button>
-          </div>
-        </form>
+        <Form {...form}>
+          <form onSubmit={form.handleSubmit(onSubmit)} className="grid gap-4">
+            <FormField
+                control={form.control}
+                name="content"
+                render={({ field }) => (
+                    <FormItem>
+                        <FormControl>
+                            <Textarea
+                                className="min-h-[150px]"
+                                placeholder={user ? "Write your answer here..." : "You must be logged in to post an answer."}
+                                disabled={!user || form.formState.isSubmitting}
+                                {...field}
+                            />
+                        </FormControl>
+                        <FormMessage />
+                    </FormItem>
+                )}
+            />
+            <div className="flex justify-end">
+              <Button type="submit" disabled={!user || form.formState.isSubmitting}>
+                {form.formState.isSubmitting && <LoaderCircle className="mr-2 h-4 w-4 animate-spin" />}
+                Post Your Answer
+              </Button>
+            </div>
+          </form>
+        </Form>
       </div>
     </div>
   );

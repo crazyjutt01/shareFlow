@@ -1,154 +1,34 @@
-/**
- * Core Philosophy: This ruleset enforces a hybrid security model tailored for a Q&A platform.
- * It combines a strict user-ownership model for private data with a public-access model for
- * community-generated content. User profiles and the questions they author are private and
- * can only be modified by the owner. In contrast, answers and tags are publicly readable
- * by anyone to foster a collaborative environment, while write access is still restricted to
- * the original author to maintain integrity.
- *
- * Data Structure: The data is organized into both user-nested and top-level collections.
- * - /users/{userId}: Contains private user profile information, strictly segregated per user.
- * - /users/{userId}/questions/{questionId}: Nests questions under their author, creating a
- *   clear ownership hierarchy enforced by the path.
- * - /answers/{answerId}: A top-level collection for all answers, making them easily queryable
- *   for public display.
- * - /tags/{tagId}: A top-level collection for all tags, treated as a shared, public resource.
- *
- * Key Security Decisions:
- * - User Enumeration is Disallowed: The top-level /users collection cannot be listed,
- *   preventing malicious actors from scraping user data.
- * - Public Read, Owner Write: Core content like answers and tags are publicly readable to
- *   all users (including unauthenticated ones), but can only be created by signed-in users
- *   and modified or deleted by their original author.
- * - Immutability of Ownership: Critical relational fields like 'userId' or 'questionId' are
- *   enforced as immutable after a document is created. This prevents documents from being
- *   re-assigned to different users or parent documents.
- * - Tags are Append-Only: To prevent vandalism of a shared resource, any signed-in user can
- *   create a new tag, but no one can update or delete existing tags.
- *
- * Denormalization for Authorization: To ensure fast and secure rule evaluation, authorization
- * data is denormalized. For example, each document in the /answers collection contains a 'userId'
- * field. This allows rules to verify ownership directly from the document itself without performing
- * costly and slow `get()` calls to other collections.
- *
- * Structural Segregation: The design separates user-private data (/users) from public community
- * data (/answers, /tags). This creates a clear security boundary and enables simple, high-performance
- * rules for list operations on public collections.
- */
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Helper Functions
-    
-    /**
-     * Checks if a user is authenticated.
-     */
     function isSignedIn() {
       return request.auth != null;
     }
 
-    /**
-     * Checks if the currently authenticated user's UID matches the provided userId.
-     * This is the primary function for enforcing document ownership.
-     */
     function isOwner(userId) {
       return isSignedIn() && request.auth.uid == userId;
     }
 
-    /**
-     * Checks for ownership on an existing document. Used for safe updates and deletes.
-     * Verifies that the document exists (`resource != null`) before checking ownership.
-     */
-    function isExistingOwner(userId) {
-      return isOwner(userId) && resource != null;
-    }
-
-    /**
-     * Validates that the 'userId' field in a new document matches the creator's UID.
-     */
-    function isAuthorOfNewDoc() {
-      return request.resource.data.userId == request.auth.uid;
-    }
-
-    /**
-     * Enforces immutability of the 'userId' field during an update.
-     */
-    function isOwnerFieldImmutable() {
-      return request.resource.data.userId == resource.data.userId;
-    }
-
-    /**
-     * Enforces immutability of the 'questionId' field during an update.
-     */
-    function isQuestionLinkImmutable() {
-      return request.resource.data.questionId == resource.data.questionId;
-    }
-
-
-    /**
-     * @description Manages user profile data. Each user has a unique document.
-     * @path /users/{userId}
-     * @allow A user (auth.uid='user123') reads their own profile at /users/user123. (get)
-     * @deny An anonymous user tries to read a profile. (get)
-     * @deny A different user (auth.uid='user456') tries to list all user profiles. (list)
-     * @principle Restricts access to a user's own data tree and prevents user enumeration.
-     */
     match /users/{userId} {
-      allow get: if isOwner(userId);
-      allow list: if false;
-      allow create: if isOwner(userId) && request.resource.data.id == userId;
-      allow update: if isExistingOwner(userId) && request.resource.data.id == resource.data.id;
-      allow delete: if isExistingOwner(userId);
-
-      /**
-       * @description Stores questions created by a specific user.
-       * @path /users/{userId}/questions/{questionId}
-       * @allow A user (auth.uid='user123') creates a new question in their own subcollection. (create)
-       * @deny A different user (auth.uid='user456') tries to read questions from /users/user123/questions. (get, list)
-       * @deny A user tries to create a question where the document's 'userId' field doesn't match the path. (create)
-       * @principle Enforces strict ownership via path hierarchy. All documents inherit the owner of the parent user document.
-       */
-      match /questions/{questionId} {
-        allow get: if isOwner(userId);
-        allow list: if isOwner(userId);
-        allow create: if isOwner(userId) && request.resource.data.userId == userId;
-        allow update: if isExistingOwner(userId) && isOwnerFieldImmutable();
-        allow delete: if isExistingOwner(userId);
-      }
+      allow read: if true;
+      allow create: if isOwner(userId);
+      allow update, delete: if isOwner(userId);
+    }
+    
+    match /questions/{questionId} {
+      allow read: if true;
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+      allow update, delete: if isSignedIn() && resource.data.userId == request.auth.uid;
     }
 
-    /**
-     * @description Stores answers to questions. Answers are public to read.
-     * @path /answers/{answerId}
-     * @allow Any user, including unauthenticated ones, can read any answer. (get, list)
-     * @allow An authenticated user (auth.uid='user123') creates a new answer with { userId: 'user123' }. (create)
-     * @deny An authenticated user (auth.uid='user123') tries to update an answer owned by 'user456'. (update)
-     * @deny A user tries to change the 'userId' or 'questionId' of an existing answer. (update)
-     * @principle Implements a "Public Read, Owner-Only Write" pattern using a denormalized 'userId' field for authorization.
-     */
     match /answers/{answerId} {
-      allow get: if true;
-      allow list: if true;
-      allow create: if isSignedIn() && isAuthorOfNewDoc();
-      allow update: if resource != null && isOwner(resource.data.userId) && isOwnerFieldImmutable() && isQuestionLinkImmutable();
-      allow delete: if resource != null && isOwner(resource.data.userId);
-    }
-
-    /**
-     * @description Stores tags for categorizing questions and answers. Tags are a public, shared resource.
-     * @path /tags/{tagId}
-     * @allow Any user, including unauthenticated ones, can read and list all tags. (get, list)
-     * @allow Any authenticated user can create a new tag. (create)
-     * @deny Any user attempts to modify or delete an existing tag. (update, delete)
-     * @principle Treats tags as an immutable, append-only public resource to prevent community data vandalism.
-     */
-    match /tags/{tagId} {
-      allow get: if true;
-      allow list: if true;
-      allow create: if isSignedIn();
-      allow update: if false;
-      allow delete: if false;
+      allow read: if true;
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+      // Allow anyone signed in to update votes, but not other fields
+      allow update: if isSignedIn() && request.resource.data.keys().hasOnly(['upvotes', 'downvotes']);
+      // Only the author can delete their own answer
+      allow delete: if isSignedIn() && resource.data.userId == request.auth.uid;
     }
   }
 }

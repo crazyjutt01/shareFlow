@@ -1,26 +1,39 @@
 export type User = {
   id: string;
-  name: string;
-  avatarUrl: string;
-  reputation: number;
+  username: string;
+  email: string;
+  registrationDate: string;
+  photoURL?: string;
+  reputation?: number;
 };
 
 export type Answer = {
   id: string;
   questionId: string;
-  author: User;
+  userId: string;
+  author: {
+    name: string;
+    avatarUrl: string;
+  };
   content: string;
-  votes: number;
+  upvotes: number;
+  downvotes: number;
+  submissionDate: string;
   createdAt: string;
 };
 
 export type Question = {
   id: string;
+  userId: string;
   title: string;
   description: string;
-  author: User;
+  author: {
+    name: string;
+    avatarUrl: string;
+  };
   tags: string[];
   answers: Answer[];
   votes: number;
+  creationDate: string;
   createdAt: string;
 };

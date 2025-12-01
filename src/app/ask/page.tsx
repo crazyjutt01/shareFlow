@@ -10,7 +10,6 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
@@ -26,6 +25,9 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { useToast } from "@/hooks/use-toast";
+import { useUser } from "@/firebase";
+import { postQuestion } from "../actions";
+import { LoaderCircle } from "lucide-react";
 
 const formSchema = z.object({
   title: z.string().min(10, "Title must be at least 10 characters long.").max(150, "Title cannot exceed 150 characters."),
@@ -36,6 +38,7 @@ const formSchema = z.object({
 export default function AskQuestionPage() {
   const router = useRouter();
   const { toast } = useToast();
+  const { user, isUserLoading } = useUser();
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -46,14 +49,50 @@ export default function AskQuestionPage() {
     },
   });
 
-  function onSubmit(values: z.infer<typeof formSchema>) {
-    // In a real app, you'd send this to a server action.
-    console.log("New Question Submitted:", values);
-    toast({
-      title: "Question Posted!",
-      description: "Your question has been successfully submitted.",
-    });
-    router.push("/");
+  async function onSubmit(values: z.infer<typeof formSchema>) {
+    if (!user) {
+        toast({
+            variant: "destructive",
+            title: "Authentication Error",
+            description: "You must be logged in to post a question.",
+        });
+        return;
+    }
+
+    const formData = new FormData();
+    formData.append('title', values.title);
+    formData.append('description', values.description);
+    formData.append('tags', values.tags);
+    formData.append('userId', user.uid);
+
+    const result = await postQuestion(formData);
+
+    if (result.success) {
+      toast({
+        title: "Question Posted!",
+        description: "Your question has been successfully submitted.",
+      });
+      router.push("/questions");
+    } else {
+        toast({
+            variant: "destructive",
+            title: "Failed to post question",
+            description: result.error,
+        });
+    }
+  }
+
+  if (isUserLoading) {
+    return (
+        <div className="flex justify-center items-center h-full">
+            <LoaderCircle className="h-8 w-8 animate-spin text-primary" />
+        </div>
+    )
+  }
+
+  if (!user) {
+    router.push('/login');
+    return null;
   }
 
   return (
@@ -122,7 +161,10 @@ export default function AskQuestionPage() {
               />
             </CardContent>
             <CardFooter>
-              <Button type="submit">Post Your Question</Button>
+              <Button type="submit" disabled={form.formState.isSubmitting}>
+                {form.formState.isSubmitting && <LoaderCircle className="mr-2 h-4 w-4 animate-spin" />}
+                Post Your Question
+              </Button>
             </CardFooter>
           </Card>
         </form>

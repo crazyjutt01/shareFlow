@@ -4,23 +4,52 @@ import { useState } from 'react';
 import { Button } from './ui/button';
 import { ArrowUp, ArrowDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useFirestore, useUser, updateDocumentNonBlocking } from '@/firebase';
+import { doc, increment } from 'firebase/firestore';
+import { useToast } from '@/hooks/use-toast';
 
-export default function VoteControl({ votes }: { votes: number }) {
-  const [currentVotes, setCurrentVotes] = useState(votes);
+interface VoteControlProps {
+    answerId: string;
+    initialUpvotes: number;
+    initialDownvotes: number;
+}
+
+export default function VoteControl({ answerId, initialUpvotes, initialDownvotes }: VoteControlProps) {
   const [voted, setVoted] = useState<'up' | 'down' | null>(null);
+  const firestore = useFirestore();
+  const { user } = useUser();
+  const { toast } = useToast();
 
   const handleVote = (type: 'up' | 'down') => {
-    if (voted === type) {
-      // Unvote
-      setCurrentVotes(votes);
-      setVoted(null);
-    } else {
-      // New vote or change vote
-      const newVotes = votes + (type === 'up' ? 1 : -1) - (voted ? (voted === 'up' ? 1 : -1) : 0);
-      setCurrentVotes(newVotes);
-      setVoted(type);
+    if (!user) {
+        toast({ variant: 'destructive', title: 'You must be logged in to vote.' });
+        return;
     }
+    if (!firestore) return;
+
+    const answerRef = doc(firestore, 'answers', answerId);
+    let voteUpdate = {};
+
+    if (voted === type) { // Un-voting
+        voteUpdate = type === 'up' ? { upvotes: increment(-1) } : { downvotes: increment(-1) };
+        setVoted(null);
+    } else if (voted) { // Changing vote
+        if (type === 'up') {
+            voteUpdate = { upvotes: increment(1), downvotes: increment(-1) };
+        } else {
+            voteUpdate = { upvotes: increment(-1), downvotes: increment(1) };
+        }
+        setVoted(type);
+    } else { // New vote
+        voteUpdate = type === 'up' ? { upvotes: increment(1) } : { downvotes: increment(1) };
+        setVoted(type);
+    }
+
+    updateDocumentNonBlocking(answerRef, voteUpdate);
   };
+  
+  // This is an optimistic update. We're not reading the votes back from the DB.
+  const optimisticVotes = initialUpvotes - initialDownvotes;
 
   return (
     <div className="flex flex-col items-center space-y-2">
@@ -35,7 +64,7 @@ export default function VoteControl({ votes }: { votes: number }) {
       >
         <ArrowUp className="h-5 w-5" />
       </Button>
-      <span className="text-lg font-bold text-foreground tabular-nums">{currentVotes}</span>
+      <span className="text-lg font-bold text-foreground tabular-nums">{optimisticVotes}</span>
       <Button
         variant="ghost"
         size="icon"

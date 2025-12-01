@@ -11,7 +11,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Plus, LogIn, UserPlus, LogOut } from 'lucide-react';
+import { Plus, LogIn, UserPlus, LogOut, User as UserIcon } from 'lucide-react';
 import { Logo } from '../logo';
 import { useUser, useAuth } from '@/firebase';
 import { Skeleton } from '../ui/skeleton';
@@ -25,6 +25,12 @@ export default function Header() {
   const handleLogout = () => {
     auth.signOut();
     router.push('/');
+  };
+
+  const navigateToProfile = () => {
+    if (user) {
+      router.push(`/profile/${user.uid}`);
+    }
   };
 
   return (
@@ -60,7 +66,7 @@ export default function Header() {
                 <Button variant="ghost" className="relative h-9 w-9 rounded-full">
                   <Avatar className="h-9 w-9">
                     {user.photoURL && <AvatarImage src={user.photoURL} alt={user.displayName || 'User'} />}
-                    <AvatarFallback>{user.displayName ? user.displayName.charAt(0) : 'U'}</AvatarFallback>
+                    <AvatarFallback>{user.displayName ? user.displayName.charAt(0).toUpperCase() : 'U'}</AvatarFallback>
                   </Avatar>
                 </Button>
               </DropdownMenuTrigger>
@@ -74,7 +80,10 @@ export default function Header() {
                   </div>
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem>Profile</DropdownMenuItem>
+                <DropdownMenuItem onClick={navigateToProfile}>
+                  <UserIcon className="mr-2 h-4 w-4" />
+                  <span>Profile</span>
+                </DropdownMenuItem>
                 <DropdownMenuItem>Settings</DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={handleLogout}>

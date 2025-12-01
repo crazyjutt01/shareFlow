@@ -8,6 +8,7 @@ import VoteControl from "./vote-control";
 import { useDoc, useFirestore, useMemoFirebase } from "@/firebase";
 import { doc } from "firebase/firestore";
 import { Skeleton } from "./ui/skeleton";
+import Link from "next/link";
 
 type AnswerCardProps = {
   answer: Answer;
@@ -34,13 +35,13 @@ const AuthorInfo = ({ userId }: { userId: string }) => {
     }
 
     return (
-        <div className="flex items-center gap-2 mb-2">
+        <Link href={`/profile/${user.id}`} className="flex items-center gap-2 mb-2 hover:text-primary transition-colors group">
             <Avatar className="h-6 w-6">
                 {user.photoURL && <AvatarImage src={user.photoURL} alt={user.username} />}
-                <AvatarFallback>{user.username?.charAt(0) ?? 'A'}</AvatarFallback>
+                <AvatarFallback>{user.username?.charAt(0).toUpperCase() ?? 'A'}</AvatarFallback>
             </Avatar>
-            <span className="font-semibold text-primary">{user.username}</span>
-        </div>
+            <span className="font-semibold text-primary group-hover:underline">{user.username}</span>
+        </Link>
     );
 };
 

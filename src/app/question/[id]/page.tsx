@@ -18,6 +18,7 @@ import { Form, FormControl, FormField, FormItem, FormMessage } from '@/component
 import { postAnswer } from '@/app/actions';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
+import Link from 'next/link';
 
 const answerFormSchema = z.object({
   content: z.string().min(10, 'Your answer must be at least 10 characters long.'),
@@ -29,13 +30,13 @@ const QuestionDetails = ({ question, author }: { question: Question, author: Use
         <div className="space-y-4">
             <h1 className="text-4xl font-bold font-headline text-foreground">{question.title}</h1>
             <div className="flex items-center space-x-4 text-sm text-muted-foreground">
-                <div className="flex items-center gap-2">
+                <Link href={`/profile/${author?.id}`} className="flex items-center gap-2 hover:text-primary transition-colors">
                     <Avatar className="h-8 w-8">
                         {author?.photoURL && <AvatarImage src={author.photoURL} alt={author.username} />}
-                        <AvatarFallback>{author?.username?.charAt(0) ?? 'U'}</AvatarFallback>
+                        <AvatarFallback>{author?.username?.charAt(0).toUpperCase() ?? 'U'}</AvatarFallback>
                     </Avatar>
                     <span>{author?.username ?? 'Anonymous'}</span>
-                </div>
+                </Link>
                 <Separator orientation="vertical" className="h-4" />
                 <div className="flex items-center gap-1.5">
                     <Clock className="h-4 w-4" />

@@ -29,13 +29,13 @@ const AuthorInfo = ({ userId }: { userId: string }) => {
     }
     
     return (
-        <div className="flex items-center space-x-2">
+        <Link href={`/profile/${user.id}`} className="flex items-center space-x-2 hover:text-primary transition-colors">
             <Avatar className="h-6 w-6">
                 {user.photoURL && <AvatarImage src={user.photoURL} alt={user.username}/>}
-                <AvatarFallback>{user.username?.charAt(0) ?? 'A'}</AvatarFallback>
+                <AvatarFallback>{user.username?.charAt(0).toUpperCase() ?? 'A'}</AvatarFallback>
             </Avatar>
             <span className="truncate">{user.username}</span>
-        </div>
+        </Link>
     )
 }
 

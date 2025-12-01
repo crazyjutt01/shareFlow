@@ -3,7 +3,7 @@
 import { summarizeTopAnswer } from "@/ai/flows/summarize-top-answer";
 import { z } from "zod";
 import { addDoc, collection, serverTimestamp } from "firebase/firestore";
-import { getSdks } from "@/firebase";
+import { getSdks } from "@/firebase/server";
 
 const summarySchema = z.object({
   questionTitle: z.string(),

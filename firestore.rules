@@ -17,7 +17,7 @@ service cloud.firestore {
     }
     
     match /questions/{questionId} {
-      allow read, list: if true;
+      allow read: if true; // includes list and get
       allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
       allow update, delete: if isSignedIn() && resource.data.userId == request.auth.uid;
     }
@@ -25,7 +25,7 @@ service cloud.firestore {
     match /answers/{answerId} {
       allow read: if true;
       // Allow querying answers by questionId or by userId
-      allow list: if isSignedIn() && (request.query.get('where.0.2') == 'questionId' || request.query.get('where.0.2') == 'userId');
+      allow list: if request.query.get('where.0.field') == 'questionId' || request.query.get('where.0.field') == 'userId';
       allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
       // Allow anyone signed in to update votes, but not other fields
       allow update: if isSignedIn() && request.resource.data.keys().hasOnly(['upvotes', 'downvotes']);

@@ -132,6 +132,7 @@ export default function ProfilePage() {
 
     const relatedQuestionsQuery = useMemoFirebase(() => {
         if (!firestore || questionIdsFromAnswers.length === 0) return null;
+        // Firestore 'in' queries are limited to 30 values.
         return query(collection(firestore, 'questions'), where('__name__', 'in', questionIdsFromAnswers.slice(0, 30)));
     }, [firestore, questionIdsFromAnswers]);
 
@@ -143,8 +144,7 @@ export default function ProfilePage() {
         return map;
     }, [relatedQuestionsData]);
 
-
-    const isLoading = isProfileLoading || areQuestionsLoading || areAnswersLoading;
+    const isLoading = isProfileLoading || areQuestionsLoading || areAnswersLoading || areRelatedQuestionsLoading;
 
     if (isLoading) {
         return (
@@ -154,12 +154,8 @@ export default function ProfilePage() {
         )
     }
     
-    if (!isProfileLoading && !userProfile) {
-        return notFound();
-    }
-
     if (!userProfile) {
-        return <div className="flex justify-center items-center h-[calc(100vh-10rem)]"><LoaderCircle className="h-8 w-8 animate-spin text-primary" /></div>;
+        return notFound();
     }
 
     return (
@@ -176,12 +172,7 @@ export default function ProfilePage() {
                     </TabsTrigger>
                 </TabsList>
                 <TabsContent value="questions" className="mt-6">
-                     {areQuestionsLoading ? (
-                        <div className="space-y-4">
-                            <ActivityCardSkeleton />
-                            <ActivityCardSkeleton />
-                        </div>
-                    ) : userQuestions && userQuestions.length > 0 ? (
+                    {userQuestions && userQuestions.length > 0 ? (
                         <div className="space-y-4">
                             {userQuestions.map(q => <QuestionItem key={q.id} question={q} />)}
                         </div>
@@ -190,12 +181,7 @@ export default function ProfilePage() {
                     )}
                 </TabsContent>
                 <TabsContent value="answers" className="mt-6">
-                    {areAnswersLoading || areRelatedQuestionsLoading ? (
-                         <div className="space-y-4">
-                            <ActivityCardSkeleton />
-                            <ActivityCardSkeleton />
-                        </div>
-                    ) : userAnswers && userAnswers.length > 0 ? (
+                    {userAnswers && userAnswers.length > 0 ? (
                         <div className="space-y-4">
                             {userAnswers.map(a => {
                                 const relatedQuestion = relatedQuestionsMap.get(a.questionId);

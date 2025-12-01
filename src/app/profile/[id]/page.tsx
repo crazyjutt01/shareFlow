@@ -101,9 +101,13 @@ export default function ProfilePage() {
     const userAnswersQuery = useMemoFirebase(() => firestore && id ? query(collection(firestore, 'answers'), where('userId', '==', id), orderBy('submissionDate', 'desc')) : null, [firestore, id]);
     const { data: userAnswers, isLoading: areAnswersLoading } = useCollection<Answer>(userAnswersQuery);
     
-    // We need all questions to find the title for an answer
-    const allQuestionsQuery = useMemoFirebase(() => firestore ? collection(firestore, 'questions') : null, [firestore]);
-    const { data: allQuestions } = useCollection<Question>(allQuestionsQuery);
+    // We need questions related to the user's answers to find the title for an answer
+    const questionIdsForAnswers = useMemoFirebase(() => userAnswers ? [...new Set(userAnswers.map(a => a.questionId))] : [], [userAnswers]);
+    const answersQuestionsQuery = useMemoFirebase(() => {
+        if (!firestore || !questionIdsForAnswers || questionIdsForAnswers.length === 0) return null;
+        return query(collection(firestore, 'questions'), where('__name__', 'in', questionIdsForAnswers));
+    }, [firestore, questionIdsForAnswers]);
+    const { data: questionsForAnswers } = useCollection<Question>(answersQuestionsQuery);
 
 
     if (isProfileLoading) {
@@ -118,13 +122,13 @@ export default function ProfilePage() {
         )
     }
 
-    if (!userProfile) {
+    if (!isProfileLoading && !userProfile) {
         notFound();
     }
 
     return (
         <div className="space-y-8">
-            <ProfileHeader user={userProfile} />
+            {userProfile && <ProfileHeader user={userProfile} />}
             <Separator />
             <Tabs defaultValue="questions" className="w-full">
                 <TabsList className="grid w-full grid-cols-2 max-w-md mx-auto">
@@ -153,9 +157,9 @@ export default function ProfilePage() {
                          <div className="flex justify-center items-center h-40">
                             <LoaderCircle className="h-8 w-8 animate-spin text-primary" />
                         </div>
-                    ) : userAnswers && userAnswers.length > 0 && allQuestions ? (
+                    ) : userAnswers && userAnswers.length > 0 && questionsForAnswers ? (
                         <div className="space-y-4">
-                            {userAnswers.map(a => <AnswerItem key={a.id} answer={a} questions={allQuestions} />)}
+                            {userAnswers.map(a => <AnswerItem key={a.id} answer={a} questions={questionsForAnswers} />)}
                         </div>
                     ) : (
                          <p className="text-center text-muted-foreground py-8">This user hasn't answered any questions yet.</p>

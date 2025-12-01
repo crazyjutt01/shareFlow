@@ -25,7 +25,7 @@ service cloud.firestore {
     match /answers/{answerId} {
       allow read: if true;
       // Allow querying answers by questionId or by userId
-      allow list: if request.query.get('where.0.field') == 'questionId' || request.query.get('where.0.field') == 'userId';
+      allow list: if request.query.where[0].fieldPath == 'questionId' || request.query.where[0].fieldPath == 'userId';
       allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
       // Allow anyone signed in to update votes, but not other fields
       allow update: if isSignedIn() && request.resource.data.keys().hasOnly(['upvotes', 'downvotes']);

@@ -28,8 +28,10 @@ const ActivityCardSkeleton = () => (
         <CardHeader>
             <Skeleton className="h-6 w-1/2" />
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-2">
             <Skeleton className="h-4 w-full" />
+            <Skeleton className="h-4 w-full" />
+            <Skeleton className="h-4 w-2/3" />
         </CardContent>
     </Card>
 )
@@ -107,26 +109,29 @@ export default function ProfilePage() {
     const { id } = useParams();
     const firestore = useFirestore();
 
+    // 1. Fetch user profile
     const userProfileRef = useMemoFirebase(() => firestore && id ? doc(firestore, 'users', id as string) : null, [firestore, id]);
     const { data: userProfile, isLoading: isProfileLoading } = useDoc<User>(userProfileRef);
 
+    // 2. Fetch questions asked by the user
     const userQuestionsQuery = useMemoFirebase(() => firestore && id ? query(collection(firestore, 'questions'), where('userId', '==', id), orderBy('creationDate', 'desc')) : null, [firestore, id]);
     const { data: userQuestions, isLoading: areQuestionsLoading } = useCollection<WithId<Question>>(userQuestionsQuery);
     
+    // 3. Fetch answers submitted by the user
     const userAnswersQuery = useMemoFirebase(() => firestore && id ? query(collection(firestore, 'answers'), where('userId', '==', id), orderBy('submissionDate', 'desc')) : null, [firestore, id]);
     const { data: userAnswers, isLoading: areAnswersLoading } = useCollection<WithId<Answer>>(userAnswersQuery);
 
+    // 4. Fetch the questions related to the user's answers
     const [relatedQuestions, setRelatedQuestions] = useState<Map<string, WithId<Question>>>(new Map());
-    const [areRelatedQuestionsLoading, setAreRelatedQuestionsLoading] = useState(false);
+    const [areRelatedQuestionsLoading, setAreRelatedQuestionsLoading] = useState(true);
 
     useEffect(() => {
-        if (!userAnswers || userAnswers.length === 0 || !firestore) {
-            setRelatedQuestions(new Map());
+        if (!userAnswers || !firestore) {
+            if (!areAnswersLoading) setAreRelatedQuestionsLoading(false);
             return;
         }
 
         const fetchRelatedQuestions = async () => {
-            setAreRelatedQuestionsLoading(true);
             const questionIds = [...new Set(userAnswers.map(a => a.questionId))];
             
             if (questionIds.length === 0) {
@@ -134,23 +139,23 @@ export default function ProfilePage() {
                 setAreRelatedQuestionsLoading(false);
                 return;
             }
-
+            
+            setAreRelatedQuestionsLoading(true);
             try {
-                // Firestore 'in' queries are limited to 30 elements.
-                // We chunk the requests if there are more.
                 const questionDocs = new Map<string, WithId<Question>>();
                 const idChunks: string[][] = [];
                 for (let i = 0; i < questionIds.length; i += 30) {
                     idChunks.push(questionIds.slice(i, i + 30));
                 }
 
-                for (const chunk of idChunks) {
+                await Promise.all(idChunks.map(async chunk => {
                     const q = query(collection(firestore, 'questions'), where('__name__', 'in', chunk));
                     const querySnapshot = await getDocs(q);
                     querySnapshot.forEach(doc => {
                         questionDocs.set(doc.id, { id: doc.id, ...doc.data() } as WithId<Question>);
                     });
-                }
+                }));
+                
                 setRelatedQuestions(questionDocs);
             } catch (e) {
                 console.error("Error fetching related questions:", e);
@@ -162,27 +167,16 @@ export default function ProfilePage() {
 
         fetchRelatedQuestions();
 
-    }, [userAnswers, firestore]);
+    }, [userAnswers, firestore, areAnswersLoading]);
 
-    const isLoading = isProfileLoading || areQuestionsLoading || areAnswersLoading;
+    // Consolidated loading state
+    const isLoading = isProfileLoading || areQuestionsLoading || areAnswersLoading || areRelatedQuestionsLoading;
     
-    if (isLoading) {
-        return (
-            <div className="space-y-8">
-                <ProfileHeaderSkeleton />
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                    <ActivityCardSkeleton />
-                    <ActivityCardSkeleton />
-                </div>
-            </div>
-        )
-    }
-
     if (!isProfileLoading && !userProfile) {
         return notFound();
     }
     
-    if (!userProfile) {
+    if (isLoading && !userProfile) {
         return (
              <div className="flex justify-center items-center h-[calc(100vh-10rem)]">
                 <LoaderCircle className="h-8 w-8 animate-spin text-primary" />
@@ -190,10 +184,9 @@ export default function ProfilePage() {
         )
     }
 
-
     return (
         <div className="space-y-8">
-            <ProfileHeader user={userProfile} />
+            {isProfileLoading || !userProfile ? <ProfileHeaderSkeleton/> : <ProfileHeader user={userProfile} />}
             <Separator />
             <Tabs defaultValue="questions" className="w-full">
                 <TabsList className="grid w-full grid-cols-2 max-w-md mx-auto">
@@ -206,8 +199,9 @@ export default function ProfilePage() {
                 </TabsList>
                 <TabsContent value="questions" className="mt-6">
                      {areQuestionsLoading ? (
-                        <div className="flex justify-center items-center h-40">
-                            <LoaderCircle className="h-8 w-8 animate-spin text-primary" />
+                        <div className="space-y-4">
+                            <ActivityCardSkeleton />
+                            <ActivityCardSkeleton />
                         </div>
                     ) : userQuestions && userQuestions.length > 0 ? (
                         <div className="space-y-4">
@@ -219,8 +213,9 @@ export default function ProfilePage() {
                 </TabsContent>
                 <TabsContent value="answers" className="mt-6">
                     {areAnswersLoading || areRelatedQuestionsLoading ? (
-                         <div className="flex justify-center items-center h-40">
-                            <LoaderCircle className="h-8 w-8 animate-spin text-primary" />
+                         <div className="space-y-4">
+                            <ActivityCardSkeleton />
+                            <ActivityCardSkeleton />
                         </div>
                     ) : userAnswers && userAnswers.length > 0 ? (
                         <div className="space-y-4">

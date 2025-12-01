@@ -17,13 +17,15 @@ service cloud.firestore {
     }
     
     match /questions/{questionId} {
-      allow read: if true;
+      allow read, list: if true;
       allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
       allow update, delete: if isSignedIn() && resource.data.userId == request.auth.uid;
     }
 
     match /answers/{answerId} {
       allow read: if true;
+      // Allow querying answers by questionId or by userId
+      allow list: if isSignedIn() && (request.query.get('where.0.2') == 'questionId' || request.query.get('where.0.2') == 'userId');
       allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
       // Allow anyone signed in to update votes, but not other fields
       allow update: if isSignedIn() && request.resource.data.keys().hasOnly(['upvotes', 'downvotes']);

@@ -1,6 +1,6 @@
 'use client';
 import { notFound, useParams } from 'next/navigation';
-import { useDoc, useCollection, useFirestore, useMemoFirebase, useUser } from '@/firebase';
+import { useDoc, useCollection, useFirestore, useMemoFirebase } from '@/firebase';
 import { doc, collection, query, where, orderBy } from 'firebase/firestore';
 import type { User, Question, Answer } from '@/lib/types';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -9,6 +9,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Calendar, HelpCircle, MessageCircle, LoaderCircle } from 'lucide-react';
 import Link from 'next/link';
+import { Separator } from '@/components/ui/separator';
 
 const ProfileHeaderSkeleton = () => (
   <div className="flex items-center space-x-6">

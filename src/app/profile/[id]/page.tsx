@@ -10,6 +10,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Calendar, HelpCircle, MessageCircle, LoaderCircle } from 'lucide-react';
 import Link from 'next/link';
 import { Separator } from '@/components/ui/separator';
+import { useMemo } from 'react';
 
 const ProfileHeaderSkeleton = () => (
   <div className="flex items-center space-x-6">
@@ -102,12 +103,17 @@ export default function ProfilePage() {
     const { data: userAnswers, isLoading: areAnswersLoading } = useCollection<Answer>(userAnswersQuery);
     
     // We need questions related to the user's answers to find the title for an answer
-    const questionIdsForAnswers = useMemoFirebase(() => userAnswers ? [...new Set(userAnswers.map(a => a.questionId))] : [], [userAnswers]);
+    const questionIdsForAnswers = useMemo(() => userAnswers ? [...new Set(userAnswers.map(a => a.questionId))] : [], [userAnswers]);
+
     const answersQuestionsQuery = useMemoFirebase(() => {
         if (!firestore || !questionIdsForAnswers || questionIdsForAnswers.length === 0) return null;
-        return query(collection(firestore, 'questions'), where('__name__', 'in', questionIdsForAnswers));
+        // Firestore 'in' queries are limited to 30 items. If the user has more than 30 answers, this will fail.
+        // For a production app, you might need to handle this with multiple queries or denormalize the question title onto the answer document.
+        const safeQuestionIds = questionIdsForAnswers.slice(0, 30);
+        return query(collection(firestore, 'questions'), where('__name__', 'in', safeQuestionIds));
     }, [firestore, questionIdsForAnswers]);
-    const { data: questionsForAnswers } = useCollection<Question>(answersQuestionsQuery);
+
+    const { data: questionsForAnswers, isLoading: areAnswerQuestionsLoading } = useCollection<Question>(answersQuestionsQuery);
 
 
     if (isProfileLoading) {
@@ -153,7 +159,7 @@ export default function ProfilePage() {
                     )}
                 </TabsContent>
                 <TabsContent value="answers" className="mt-6">
-                    {areAnswersLoading ? (
+                    {areAnswersLoading || areAnswerQuestionsLoading ? (
                          <div className="flex justify-center items-center h-40">
                             <LoaderCircle className="h-8 w-8 animate-spin text-primary" />
                         </div>

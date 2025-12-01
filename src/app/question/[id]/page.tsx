@@ -9,14 +9,13 @@ import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import AnswerCard from '@/components/answer-card';
 import { Clock, LoaderCircle, MessageSquare } from 'lucide-react';
-import { useFirestore, useDoc, useCollection, useUser, useMemoFirebase } from '@/firebase';
-import { doc, collection, query, where, orderBy } from 'firebase/firestore';
+import { useFirestore, useDoc, useCollection, useUser, useMemoFirebase, addDocumentNonBlocking } from '@/firebase';
+import { doc, collection, query, where, orderBy, serverTimestamp } from 'firebase/firestore';
 import type { Question, Answer, User } from '@/lib/types';
 import { useForm } from 'react-hook-form';
 import * as z from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Form, FormControl, FormField, FormItem, FormMessage } from '@/components/ui/form';
-import { postAnswer } from '@/app/actions';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
 import Link from 'next/link';
@@ -95,22 +94,26 @@ export default function QuestionPage() {
   });
 
   async function onSubmit(values: z.infer<typeof answerFormSchema>) {
-    if (!user) {
+    if (!user || !firestore) {
       toast({ variant: 'destructive', title: 'You must be logged in to post an answer.' });
       return;
     }
-    const formData = new FormData();
-    formData.append('content', values.content);
-    formData.append('questionId', id as string);
-    formData.append('userId', user.uid);
+    
+    const answerData = {
+        questionId: id as string,
+        userId: user.uid,
+        content: values.content,
+        submissionDate: serverTimestamp(),
+        upvotes: 0,
+        downvotes: 0,
+    };
 
-    const result = await postAnswer(formData);
-
-    if (result.success) {
-      toast({ title: 'Answer posted!' });
-      form.reset();
-    } else {
-      toast({ variant: 'destructive', title: 'Failed to post answer.', description: result.error });
+    try {
+        addDocumentNonBlocking(collection(firestore, 'answers'), answerData);
+        toast({ title: 'Answer posted!' });
+        form.reset();
+    } catch (e: any) {
+        toast({ variant: 'destructive', title: 'Failed to post answer.', description: e.message || 'An unexpected error occurred.' });
     }
   }
   

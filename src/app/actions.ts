@@ -41,33 +41,3 @@ export async function getSummary(formData: FormData) {
     return { summary: null, error: e.message || "Failed to generate summary." };
   }
 }
-
-const answerSchema = z.object({
-    content: z.string().min(1),
-    questionId: z.string(),
-    userId: z.string(),
-});
-
-export async function postAnswer(formData: FormData) {
-    try {
-        const { content, questionId, userId } = answerSchema.parse({
-            content: formData.get('content'),
-            questionId: formData.get('questionId'),
-            userId: formData.get('userId'),
-        });
-
-        await addDoc(collection(firestore, 'answers'), {
-            questionId,
-            userId,
-            content,
-            submissionDate: serverTimestamp(),
-            upvotes: 0,
-            downvotes: 0,
-        });
-
-        return { success: true, error: null };
-    } catch (e: any) {
-        console.error(e);
-        return { success: false, error: e.message || 'Failed to post answer.' };
-    }
-}

@@ -18,7 +18,7 @@ service cloud.firestore {
     }
 
     match /questions/{questionId} {
-      allow read, list: if true;
+      allow read: if true;
       allow create: if isSignedIn() &&
         request.resource.data.userId == request.auth.uid;
       allow update, delete: if isSignedIn() &&
@@ -27,10 +27,8 @@ service cloud.firestore {
 
     match /answers/{answerId} {
       allow read: if true;
-
-      // Allow listing answers only when filtering by questionId or userId
-      allow list: if request.query.where.size() > 0 &&
-                   (request.query.where[0].fieldPath == 'questionId' ||
+      allow list: if request.query.where.size() > 0 && 
+                   (request.query.where[0].fieldPath == 'questionId' || 
                     request.query.where[0].fieldPath == 'userId');
 
       allow create: if isSignedIn() &&

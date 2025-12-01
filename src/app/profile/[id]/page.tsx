@@ -1,8 +1,8 @@
 
 'use client';
 import { notFound, useParams } from 'next/navigation';
-import { useDoc, useCollection, useFirestore, useMemoFirebase } from '@/firebase';
-import { doc, collection, query, where, orderBy, getDocs, documentId } from 'firebase/firestore';
+import { useDoc, useFirestore, useMemoFirebase } from '@/firebase';
+import { doc, collection, query, where, getDocs, documentId, orderBy, Query, DocumentData } from 'firebase/firestore';
 import type { User, Question, Answer } from '@/lib/types';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -12,6 +12,7 @@ import { Calendar, HelpCircle, MessageCircle, LoaderCircle } from 'lucide-react'
 import Link from 'next/link';
 import { Separator } from '@/components/ui/separator';
 import { useMemo, useEffect, useState } from 'react';
+import { WithId, useCollection } from '@/firebase/firestore/use-collection';
 
 const ProfileHeaderSkeleton = () => (
   <div className="flex items-center space-x-6">
@@ -35,9 +36,9 @@ const ActivityCardSkeleton = () => (
 )
 
 const ProfileHeader = ({ user }: { user: User }) => {
-    const registrationDate = user.registrationDate instanceof Date 
-        ? user.registrationDate 
-        : (user.registrationDate as any)?.toDate();
+    const registrationDate = user.registrationDate
+    ? new Date((user.registrationDate as any).toDate ? (user.registrationDate as any).toDate() : user.registrationDate).toLocaleDateString()
+    : '...';
 
     return (
       <div className="flex flex-col sm:flex-row items-center space-y-4 sm:space-y-0 sm:space-x-6">
@@ -49,27 +50,27 @@ const ProfileHeader = ({ user }: { user: User }) => {
           <h1 className="text-3xl font-bold font-headline">{user.username}</h1>
           <div className="flex items-center text-muted-foreground mt-1">
             <Calendar className="mr-2 h-4 w-4" />
-            <span>Joined on {registrationDate ? new Date(registrationDate).toLocaleDateString() : '...'}</span>
+            <span>Joined on {registrationDate}</span>
           </div>
         </div>
       </div>
     );
 };
 
-const QuestionItem = ({ question }: { question: Question }) => (
+const QuestionItem = ({ question }: { question: WithId<Question> }) => (
     <Link href={`/question/${question.id}`} className="block">
         <Card className="hover:border-primary/50 transition-colors">
             <CardHeader>
                 <CardTitle className="text-lg font-semibold hover:text-primary">{question.title}</CardTitle>
             </CardHeader>
             <CardContent className="text-sm text-muted-foreground">
-                <p>Asked on {question.creationDate ? new Date(question.creationDate.toDate()).toLocaleDateString() : '...'}</p>
+                 <p>Asked on {question.creationDate ? new Date((question.creationDate as any).toDate()).toLocaleDateString() : '...'}</p>
             </CardContent>
         </Card>
     </Link>
 );
 
-const AnswerItem = ({ answer, question }: { answer: Answer; question: Question | undefined }) => {
+const AnswerItem = ({ answer, question }: { answer: WithId<Answer>; question: Question | undefined }) => {
     if (!question) {
         return (
             <Card>
@@ -94,7 +95,7 @@ const AnswerItem = ({ answer, question }: { answer: Answer; question: Question |
                 <CardContent className="text-sm">
                     <p className="line-clamp-2 text-muted-foreground">{answer.content}</p>
                     <p className="text-xs text-muted-foreground mt-2">
-                        Answered on {answer.submissionDate ? new Date(answer.submissionDate.toDate()).toLocaleDateString() : '...'}
+                        Answered on {answer.submissionDate ? new Date((answer.submissionDate as any).toDate()).toLocaleDateString() : '...'}
                     </p>
                 </CardContent>
             </Card>
@@ -102,67 +103,74 @@ const AnswerItem = ({ answer, question }: { answer: Answer; question: Question |
     );
 };
 
+type AnswersState = {
+    isLoading: boolean;
+    answers: WithId<Answer>[];
+    questions: Map<string, Question>;
+}
+
 export default function ProfilePage() {
     const { id } = useParams();
     const firestore = useFirestore();
-
-    const [questionsForAnswers, setQuestionsForAnswers] = useState<Map<string, Question>>(new Map());
-    const [isLoadingQuestionsForAnswers, setIsLoadingQuestionsForAnswers] = useState(false);
 
     const userProfileRef = useMemoFirebase(() => firestore && id ? doc(firestore, 'users', id as string) : null, [firestore, id]);
     const { data: userProfile, isLoading: isProfileLoading } = useDoc<User>(userProfileRef);
 
     const userQuestionsQuery = useMemoFirebase(() => firestore && id ? query(collection(firestore, 'questions'), where('userId', '==', id), orderBy('creationDate', 'desc')) : null, [firestore, id]);
     const { data: userQuestions, isLoading: areQuestionsLoading } = useCollection<Question>(userQuestionsQuery);
-
-    const userAnswersQuery = useMemoFirebase(() => firestore && id ? query(collection(firestore, 'answers'), where('userId', '==', id), orderBy('submissionDate', 'desc')) : null, [firestore, id]);
-    const { data: userAnswers, isLoading: areAnswersLoading } = useCollection<Answer>(userAnswersQuery);
     
+    const [answersState, setAnswersState] = useState<AnswersState>({
+        isLoading: true,
+        answers: [],
+        questions: new Map(),
+    });
 
     useEffect(() => {
-        const fetchQuestionsForAnswers = async () => {
-            if (!firestore || !userAnswers || userAnswers.length === 0) {
-                return;
-            }
+        if (!firestore || !id) return;
 
-            setIsLoadingQuestionsForAnswers(true);
-            const questionIds = [...new Set(userAnswers.map(a => a.questionId))];
-            
-            if (questionIds.length === 0) {
-                setQuestionsForAnswers(new Map());
-                setIsLoadingQuestionsForAnswers(false);
-                return;
-            }
+        const fetchAnswersAndQuestions = async () => {
+            setAnswersState(s => ({ ...s, isLoading: true }));
 
             try {
-                // Firestore 'in' query is limited to 30 elements. 
-                // We'll chunk the requests if there are more.
-                const chunks = [];
+                const answersQuery = query(collection(firestore, 'answers'), where('userId', '==', id), orderBy('submissionDate', 'desc'));
+                const answersSnapshot = await getDocs(answersQuery);
+                const userAnswers = answersSnapshot.docs.map(d => ({ ...d.data(), id: d.id })) as WithId<Answer>[];
+
+                if (userAnswers.length === 0) {
+                     setAnswersState({ isLoading: false, answers: [], questions: new Map() });
+                     return;
+                }
+
+                const questionIds = [...new Set(userAnswers.map(a => a.questionId))];
+                const questionsMap = new Map<string, Question>();
+
+                // Firestore 'in' query limit is 30. We need to batch.
+                const questionPromises = [];
                 for (let i = 0; i < questionIds.length; i += 30) {
-                    chunks.push(questionIds.slice(i, i + 30));
+                    const chunk = questionIds.slice(i, i + 30);
+                    questionPromises.push(
+                        getDocs(query(collection(firestore, 'questions'), where(documentId(), 'in', chunk)))
+                    );
                 }
                 
-                const questionDocs = await Promise.all(
-                    chunks.map(chunk => getDocs(query(collection(firestore, 'questions'), where(documentId(), 'in', chunk))))
-                );
-
-                const questionsMap = new Map<string, Question>();
-                questionDocs.forEach(snapshot => {
-                    snapshot.forEach(doc => {
+                const questionSnapshots = await Promise.all(questionPromises);
+                questionSnapshots.forEach(snap => {
+                    snap.forEach(doc => {
                         questionsMap.set(doc.id, { id: doc.id, ...doc.data() } as Question);
                     });
                 });
                 
-                setQuestionsForAnswers(questionsMap);
+                setAnswersState({ isLoading: false, answers: userAnswers, questions: questionsMap });
+
             } catch (error) {
-                console.error("Error fetching questions for answers:", error);
-            } finally {
-                setIsLoadingQuestionsForAnswers(false);
+                console.error("Error fetching user answers and questions:", error);
+                setAnswersState(s => ({ ...s, isLoading: false }));
             }
         };
 
-        fetchQuestionsForAnswers();
-    }, [userAnswers, firestore]);
+        fetchAnswersAndQuestions();
+
+    }, [firestore, id]);
 
     if (isProfileLoading) {
         return (
@@ -176,11 +184,11 @@ export default function ProfilePage() {
         )
     }
 
-    if (!userProfile) {
+    if (!isProfileLoading && !userProfile) {
         notFound();
     }
-
-    const isLoadingActivities = areQuestionsLoading || areAnswersLoading || isLoadingQuestionsForAnswers;
+    
+    if (!userProfile) return null; // Should be handled by notFound, but satisfies TS
 
     return (
         <div className="space-y-8">
@@ -192,7 +200,7 @@ export default function ProfilePage() {
                         <HelpCircle className="mr-2 h-4 w-4" /> Questions ({userQuestions?.length || 0})
                     </TabsTrigger>
                     <TabsTrigger value="answers">
-                        <MessageCircle className="mr-2 h-4 w-4" /> Answers ({userAnswers?.length || 0})
+                        <MessageCircle className="mr-2 h-4 w-4" /> Answers ({answersState.answers.length || 0})
                     </TabsTrigger>
                 </TabsList>
                 <TabsContent value="questions" className="mt-6">
@@ -209,14 +217,14 @@ export default function ProfilePage() {
                     )}
                 </TabsContent>
                 <TabsContent value="answers" className="mt-6">
-                    {areAnswersLoading || isLoadingQuestionsForAnswers ? (
+                    {answersState.isLoading ? (
                          <div className="flex justify-center items-center h-40">
                             <LoaderCircle className="h-8 w-8 animate-spin text-primary" />
                         </div>
-                    ) : userAnswers && userAnswers.length > 0 ? (
+                    ) : answersState.answers.length > 0 ? (
                         <div className="space-y-4">
-                            {userAnswers.map(a => {
-                                const relatedQuestion = questionsForAnswers.get(a.questionId);
+                            {answersState.answers.map(a => {
+                                const relatedQuestion = answersState.questions.get(a.questionId);
                                 return <AnswerItem key={a.id} answer={a} question={relatedQuestion} />
                             })}
                         </div>

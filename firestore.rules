@@ -26,8 +26,12 @@ service cloud.firestore {
                    (request.query.where[0].fieldPath == 'tags' || request.query.where[0].fieldPath == '__name__' || request.query.where[0].fieldPath == 'userId');
       allow create: if isSignedIn() &&
         request.resource.data.userId == request.auth.uid;
-      allow update, delete: if isSignedIn() &&
-        resource.data.userId == request.auth.uid;
+      // Allow update if user is the owner and is only changing title or description
+      allow update: if isOwner(resource.data.userId) &&
+                     request.resource.data.keys().hasAll(['title', 'description']) &&
+                     request.resource.data.title is string &&
+                     request.resource.data.description is string;
+      allow delete: if isOwner(resource.data.userId);
     }
 
     match /answers/{answerId} {
@@ -39,11 +43,13 @@ service cloud.firestore {
       allow create: if isSignedIn() &&
         request.resource.data.userId == request.auth.uid;
 
-      // Allow users to update only the vote counts, and no other fields.
-      allow update: if isSignedIn() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['upvotes', 'downvotes']);
+      // Allow users to update vote counts OR content if they are the owner
+      allow update: if isSignedIn() && (
+        (request.resource.data.keys().hasAny(['upvotes', 'downvotes']) && !request.resource.data.keys().hasAny(['content'])) ||
+        (isOwner(resource.data.userId) && request.resource.data.keys().hasOnly(['content']))
+      );
 
-      allow delete: if isSignedIn() &&
-        resource.data.userId == request.auth.uid;
+      allow delete: if isOwner(resource.data.userId);
     }
   }
 }

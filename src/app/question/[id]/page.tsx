@@ -8,7 +8,7 @@ import { Separator } from '@/components/ui/separator';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import AnswerCard from '@/components/answer-card';
-import { Clock, LoaderCircle, MessageSquare } from 'lucide-react';
+import { Clock, LoaderCircle, MessageSquare, Edit } from 'lucide-react';
 import { useFirestore, useDoc, useCollection, useUser, useMemoFirebase, addDocumentNonBlocking } from '@/firebase';
 import { doc, collection, query, where, orderBy, serverTimestamp } from 'firebase/firestore';
 import type { Question, Answer, User } from '@/lib/types';
@@ -19,17 +19,36 @@ import { Form, FormControl, FormField, FormItem, FormMessage } from '@/component
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
 import Link from 'next/link';
+import { useState } from 'react';
+import { EditQuestionDialog } from '@/components/edit-question-dialog';
 
 const answerFormSchema = z.object({
   content: z.string().min(10, 'Your answer must be at least 10 characters long.'),
 });
 
 
-const QuestionDetails = ({ question, author }: { question: Question, author: User | null }) => {
+const QuestionDetails = ({ question, author, isAuthor }: { question: Question, author: User | null, isAuthor: boolean }) => {
+    const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
     const creationDate = question.creationDate ? new Date((question.creationDate as any).toDate()).toLocaleDateString() : '...';
+    
     return (
         <div className="space-y-4">
-            <h1 className="text-4xl font-bold font-headline text-foreground">{question.title}</h1>
+             <EditQuestionDialog 
+                isOpen={isEditDialogOpen} 
+                setIsOpen={setIsEditDialogOpen}
+                questionId={question.id}
+                currentTitle={question.title}
+                currentDescription={question.description}
+             />
+            <div className="flex justify-between items-start">
+                <h1 className="text-4xl font-bold font-headline text-foreground">{question.title}</h1>
+                {isAuthor && (
+                    <Button variant="outline" onClick={() => setIsEditDialogOpen(true)}>
+                        <Edit className="mr-2 h-4 w-4" />
+                        Edit Question
+                    </Button>
+                )}
+            </div>
             <div className="flex items-center space-x-4 text-sm text-muted-foreground">
                 <Link href={`/profile/${author?.id}`} className="flex items-center gap-2 hover:text-primary transition-colors">
                     <Avatar className="h-8 w-8">
@@ -118,20 +137,26 @@ export default function QuestionPage() {
   }
   
   const isLoading = isQuestionLoading || isAuthorLoading || isAuthLoading;
-
+  
   if (isLoading) {
     return <QuestionSkeleton />;
   }
 
-  if (!question) {
-    notFound();
+  if (!isQuestionLoading && !question) {
+    return notFound();
   }
   
+  // This check is required because question could be null
+  if (!question) {
+     return <QuestionSkeleton />;
+  }
+
   const sortedAnswers = answers ? [...answers].sort((a, b) => (b.upvotes - b.downvotes) - (a.upvotes - a.downvotes)) : [];
+  const isAuthor = user?.uid === question.userId;
 
   return (
     <div className="max-w-5xl mx-auto">
-      <QuestionDetails question={question} author={author} />
+      <QuestionDetails question={question} author={author} isAuthor={isAuthor} />
       
       <Separator className="my-8" />
 

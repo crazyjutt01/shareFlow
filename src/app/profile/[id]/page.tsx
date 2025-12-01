@@ -184,11 +184,9 @@ export default function ProfilePage() {
         )
     }
 
-    if (!isProfileLoading && !userProfile) {
+    if (!userProfile) {
         notFound();
     }
-    
-    if (!userProfile) return null; // Should be handled by notFound, but satisfies TS
 
     return (
         <div className="space-y-8">

@@ -113,8 +113,10 @@ export default function QuestionPage() {
       toast({ variant: 'destructive', title: 'Failed to post answer.', description: result.error });
     }
   }
+  
+  const isLoading = isQuestionLoading || isAuthorLoading || isAuthLoading;
 
-  if (isQuestionLoading || isAuthLoading || isAuthorLoading) {
+  if (isLoading) {
     return <QuestionSkeleton />;
   }
 

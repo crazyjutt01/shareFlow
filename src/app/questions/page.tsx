@@ -9,6 +9,7 @@ import { useCollection, useFirestore, useMemoFirebase } from '@/firebase';
 import { collection, query, where, orderBy } from 'firebase/firestore';
 import type { Question } from '@/lib/types';
 import { useSearchParams } from 'next/navigation';
+import { useMemo } from 'react';
 
 export default function QuestionsPage() {
   const searchParams = useSearchParams();
@@ -34,7 +35,7 @@ export default function QuestionsPage() {
 
   const { data: questions, isLoading } = useCollection<Question>(questionsQuery);
   
-  const filteredQuestions = useMemoFirebase(() => {
+  const filteredQuestions = useMemo(() => {
     if (!questions) return [];
     if (!searchQuery) return questions;
 

@@ -14,8 +14,8 @@ service cloud.firestore {
     match /users/{userId} {
       allow read: if true;
       allow create: if isOwner(userId);
-      // Allow users to update only their own username by checking the incoming request data.
-      allow update: if isOwner(userId) && request.resource.data.keys().hasOnly(['username']);
+      // Allow users to update only their own username by checking that other sensitive fields are not changed.
+      allow update: if isOwner(userId) && request.resource.data.email == resource.data.email && request.resource.data.registrationDate == resource.data.registrationDate;
       allow delete: if isOwner(userId);
     }
 

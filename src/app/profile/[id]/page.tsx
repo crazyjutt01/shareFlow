@@ -110,19 +110,15 @@ export default function ProfilePage() {
     const { id } = useParams();
     const firestore = useFirestore();
 
-    // 1. Fetch user profile
     const userProfileRef = useMemoFirebase(() => firestore && id ? doc(firestore, 'users', id as string) : null, [firestore, id]);
     const { data: userProfile, isLoading: isProfileLoading } = useDoc<User>(userProfileRef);
 
-    // 2. Fetch questions asked by the user
     const userQuestionsQuery = useMemoFirebase(() => firestore && id ? query(collection(firestore, 'questions'), where('userId', '==', id), orderBy('creationDate', 'desc')) : null, [firestore, id]);
     const { data: userQuestions, isLoading: areQuestionsLoading } = useCollection<WithId<Question>>(userQuestionsQuery);
     
-    // 3. Fetch answers submitted by the user
     const userAnswersQuery = useMemoFirebase(() => firestore && id ? query(collection(firestore, 'answers'), where('userId', '==', id), orderBy('submissionDate', 'desc')) : null, [firestore, id]);
     const { data: userAnswers, isLoading: areAnswersLoading } = useCollection<WithId<Answer>>(userAnswersQuery);
 
-    // 4. Fetch the questions related to the user's answers
     const [relatedQuestions, setRelatedQuestions] = useState<Map<string, WithId<Question>>>(new Map());
     const [areRelatedQuestionsLoading, setAreRelatedQuestionsLoading] = useState(true);
 
@@ -144,6 +140,7 @@ export default function ProfilePage() {
             setAreRelatedQuestionsLoading(true);
             try {
                 const questionDocs = new Map<string, WithId<Question>>();
+                // Firestore 'in' query is limited to 30 items. We need to chunk the IDs.
                 const idChunks: string[][] = [];
                 for (let i = 0; i < questionIds.length; i += 30) {
                     idChunks.push(questionIds.slice(i, i + 30));
@@ -170,6 +167,8 @@ export default function ProfilePage() {
 
     }, [userAnswers, firestore, areAnswersLoading]);
 
+    const isLoading = isProfileLoading || areQuestionsLoading || areAnswersLoading || areRelatedQuestionsLoading;
+
     if (isProfileLoading) {
         return (
              <div className="flex justify-center items-center h-[calc(100vh-10rem)]">
@@ -181,8 +180,6 @@ export default function ProfilePage() {
     if (!userProfile) {
         return notFound();
     }
-    
-    const isLoading = areQuestionsLoading || areAnswersLoading || areRelatedQuestionsLoading;
 
     return (
         <div className="space-y-8">
@@ -198,7 +195,7 @@ export default function ProfilePage() {
                     </TabsTrigger>
                 </TabsList>
                 <TabsContent value="questions" className="mt-6">
-                     {isLoading ? (
+                     {areQuestionsLoading ? (
                         <div className="space-y-4">
                             <ActivityCardSkeleton />
                             <ActivityCardSkeleton />
@@ -212,7 +209,7 @@ export default function ProfilePage() {
                     )}
                 </TabsContent>
                 <TabsContent value="answers" className="mt-6">
-                    {isLoading ? (
+                    {areAnswersLoading || areRelatedQuestionsLoading ? (
                          <div className="space-y-4">
                             <ActivityCardSkeleton />
                             <ActivityCardSkeleton />

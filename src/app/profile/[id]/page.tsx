@@ -102,13 +102,10 @@ export default function ProfilePage() {
     const userAnswersQuery = useMemoFirebase(() => firestore && id ? query(collection(firestore, 'answers'), where('userId', '==', id), orderBy('submissionDate', 'desc')) : null, [firestore, id]);
     const { data: userAnswers, isLoading: areAnswersLoading } = useCollection<Answer>(userAnswersQuery);
     
-    // We need questions related to the user's answers to find the title for an answer
     const questionIdsForAnswers = useMemo(() => userAnswers ? [...new Set(userAnswers.map(a => a.questionId))] : [], [userAnswers]);
 
     const answersQuestionsQuery = useMemoFirebase(() => {
         if (!firestore || !questionIdsForAnswers || questionIdsForAnswers.length === 0) return null;
-        // Firestore 'in' queries are limited to 30 items. If the user has more than 30 answers, this will fail.
-        // For a production app, you might need to handle this with multiple queries or denormalize the question title onto the answer document.
         const safeQuestionIds = questionIdsForAnswers.slice(0, 30);
         return query(collection(firestore, 'questions'), where('__name__', 'in', safeQuestionIds));
     }, [firestore, questionIdsForAnswers]);
@@ -128,13 +125,13 @@ export default function ProfilePage() {
         )
     }
 
-    if (!isProfileLoading && !userProfile) {
+    if (!userProfile) {
         notFound();
     }
 
     return (
         <div className="space-y-8">
-            {userProfile && <ProfileHeader user={userProfile} />}
+            <ProfileHeader user={userProfile} />
             <Separator />
             <Tabs defaultValue="questions" className="w-full">
                 <TabsList className="grid w-full grid-cols-2 max-w-md mx-auto">

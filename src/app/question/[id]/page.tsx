@@ -71,7 +71,7 @@ const QuestionSkeleton = () => (
 export default function QuestionPage() {
   const { id } = useParams();
   const firestore = useFirestore();
-  const { user, isUserLoading } = useUser();
+  const { user, isUserLoading: isAuthLoading } = useUser();
   const { toast } = useToast();
 
   const questionRef = useMemoFirebase(() => firestore ? doc(firestore, 'questions', id as string) : null, [firestore, id]);
@@ -110,7 +110,7 @@ export default function QuestionPage() {
     }
   }
 
-  if (isQuestionLoading || isUserLoading) {
+  if (isQuestionLoading || isAuthLoading) {
     return <QuestionSkeleton />;
   }
 

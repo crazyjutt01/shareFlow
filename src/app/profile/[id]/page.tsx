@@ -1,8 +1,7 @@
-
 'use client';
 import { notFound, useParams } from 'next/navigation';
 import { useDoc, useFirestore, useMemoFirebase } from '@/firebase';
-import { doc, collection, query, where, orderBy } from 'firebase/firestore';
+import { doc, collection, query, where, orderBy, getDocs, DocumentData } from 'firebase/firestore';
 import type { User, Question, Answer } from '@/lib/types';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -12,7 +11,7 @@ import { Calendar, HelpCircle, MessageCircle, LoaderCircle } from 'lucide-react'
 import Link from 'next/link';
 import { Separator } from '@/components/ui/separator';
 import { WithId, useCollection } from '@/firebase/firestore/use-collection';
-import { useMemo } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 
 const ProfileHeaderSkeleton = () => (
   <div className="flex items-center space-x-6">
@@ -117,19 +116,56 @@ export default function ProfilePage() {
     const userAnswersQuery = useMemoFirebase(() => firestore && id ? query(collection(firestore, 'answers'), where('userId', '==', id), orderBy('submissionDate', 'desc')) : null, [firestore, id]);
     const { data: userAnswers, isLoading: areAnswersLoading } = useCollection<WithId<Answer>>(userAnswersQuery);
 
-    const allQuestionsQuery = useMemoFirebase(() => firestore ? collection(firestore, 'questions') : null, [firestore]);
-    const { data: allQuestions, isLoading: areAllQuestionsLoading } = useCollection<WithId<Question>>(allQuestionsQuery);
+    const [relatedQuestions, setRelatedQuestions] = useState<Map<string, WithId<Question>>>(new Map());
+    const [areRelatedQuestionsLoading, setAreRelatedQuestionsLoading] = useState(false);
 
-    const questionsById = useMemo(() => {
-        if (!allQuestions) return new Map<string, WithId<Question>>();
-        return allQuestions.reduce((acc, q) => {
-            acc.set(q.id, q);
-            return acc;
-        }, new Map<string, WithId<Question>>());
-    }, [allQuestions]);
+    useEffect(() => {
+        if (!userAnswers || userAnswers.length === 0 || !firestore) {
+            setRelatedQuestions(new Map());
+            return;
+        }
 
-    const isLoading = isProfileLoading || areQuestionsLoading || areAnswersLoading || areAllQuestionsLoading;
+        const fetchRelatedQuestions = async () => {
+            setAreRelatedQuestionsLoading(true);
+            const questionIds = [...new Set(userAnswers.map(a => a.questionId))];
+            
+            if (questionIds.length === 0) {
+                setRelatedQuestions(new Map());
+                setAreRelatedQuestionsLoading(false);
+                return;
+            }
 
+            try {
+                // Firestore 'in' queries are limited to 30 elements.
+                // We chunk the requests if there are more.
+                const questionDocs = new Map<string, WithId<Question>>();
+                const idChunks: string[][] = [];
+                for (let i = 0; i < questionIds.length; i += 30) {
+                    idChunks.push(questionIds.slice(i, i + 30));
+                }
+
+                for (const chunk of idChunks) {
+                    const q = query(collection(firestore, 'questions'), where('__name__', 'in', chunk));
+                    const querySnapshot = await getDocs(q);
+                    querySnapshot.forEach(doc => {
+                        questionDocs.set(doc.id, { id: doc.id, ...doc.data() } as WithId<Question>);
+                    });
+                }
+                setRelatedQuestions(questionDocs);
+            } catch (e) {
+                console.error("Error fetching related questions:", e);
+                setRelatedQuestions(new Map());
+            } finally {
+                setAreRelatedQuestionsLoading(false);
+            }
+        };
+
+        fetchRelatedQuestions();
+
+    }, [userAnswers, firestore]);
+
+    const isLoading = isProfileLoading || areQuestionsLoading || areAnswersLoading;
+    
     if (isLoading) {
         return (
             <div className="space-y-8">
@@ -142,9 +178,20 @@ export default function ProfilePage() {
         )
     }
 
-    if (!userProfile) {
+    if (!isProfileLoading && !userProfile) {
         return notFound();
     }
+    
+    // This check should only happen after the initial profile load is complete.
+    if (!userProfile) {
+        // This should theoretically not be reached if the above notFound() is working, but as a safeguard.
+        return (
+             <div className="flex justify-center items-center h-[calc(100vh-10rem)]">
+                <LoaderCircle className="h-8 w-8 animate-spin text-primary" />
+            </div>
+        )
+    }
+
 
     return (
         <div className="space-y-8">
@@ -173,14 +220,14 @@ export default function ProfilePage() {
                     )}
                 </TabsContent>
                 <TabsContent value="answers" className="mt-6">
-                    {areAnswersLoading || areAllQuestionsLoading ? (
+                    {areAnswersLoading || areRelatedQuestionsLoading ? (
                          <div className="flex justify-center items-center h-40">
                             <LoaderCircle className="h-8 w-8 animate-spin text-primary" />
                         </div>
                     ) : userAnswers && userAnswers.length > 0 ? (
                         <div className="space-y-4">
                             {userAnswers.map(a => {
-                                const relatedQuestion = questionsById.get(a.questionId);
+                                const relatedQuestion = relatedQuestions.get(a.questionId);
                                 return <AnswerItem key={a.id} answer={a} question={relatedQuestion} />
                             })}
                         </div>

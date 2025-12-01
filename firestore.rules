@@ -19,6 +19,9 @@ service cloud.firestore {
 
     match /questions/{questionId} {
       allow read: if true;
+      // Allow list reads if querying by tags or by a list of document IDs (for profile page)
+      allow list: if request.query.keys().hasAny(['where', 'limit']) &&
+                   (request.query.where[0].fieldPath == 'tags' || request.query.where[0].fieldPath == '__name__');
       allow create: if isSignedIn() &&
         request.resource.data.userId == request.auth.uid;
       allow update, delete: if isSignedIn() &&
@@ -35,8 +38,7 @@ service cloud.firestore {
         request.resource.data.userId == request.auth.uid;
 
       // Allow users to update only the vote counts, and no other fields.
-      allow update: if isSignedIn() &&
-                      request.resource.data.diff(resource.data).affectedKeys().hasOnly(['upvotes', 'downvotes']);
+      allow update: if isSignedIn() && request.resource.data.keys().hasOnly(['upvotes', 'downvotes']);
 
       allow delete: if isSignedIn() &&
         resource.data.userId == request.auth.uid;

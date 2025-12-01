@@ -1,0 +1,231 @@
+{
+  "entities": {
+    "User": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "User",
+      "type": "object",
+      "description": "Represents a user account in the ShareFlow application.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the user."
+        },
+        "username": {
+          "type": "string",
+          "description": "The username of the user."
+        },
+        "email": {
+          "type": "string",
+          "description": "The email address of the user.",
+          "format": "email"
+        },
+        "registrationDate": {
+          "type": "string",
+          "description": "The date and time the user registered.",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "username",
+        "email",
+        "registrationDate"
+      ]
+    },
+    "Question": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Question",
+      "type": "object",
+      "description": "Represents a question posted by a user.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the question."
+        },
+        "userId": {
+          "type": "string",
+          "description": "Reference to the User who posted the question. (Relationship: User 1:N Question)"
+        },
+        "title": {
+          "type": "string",
+          "description": "The title of the question."
+        },
+        "description": {
+          "type": "string",
+          "description": "A detailed description of the question."
+        },
+        "creationDate": {
+          "type": "string",
+          "description": "The date and time the question was created.",
+          "format": "date-time"
+        },
+        "tagIds": {
+          "type": "array",
+          "description": "References to Tags. (Relationship: Tag N:N Question)",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "id",
+        "userId",
+        "title",
+        "description",
+        "creationDate"
+      ]
+    },
+    "Answer": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Answer",
+      "type": "object",
+      "description": "Represents an answer submitted by a user to a specific question.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the answer."
+        },
+        "userId": {
+          "type": "string",
+          "description": "Reference to the User who submitted the answer. (Relationship: User 1:N Answer)"
+        },
+        "questionId": {
+          "type": "string",
+          "description": "Reference to the Question this answer is for. (Relationship: Question 1:N Answer)"
+        },
+        "content": {
+          "type": "string",
+          "description": "The content of the answer, with rich text formatting."
+        },
+        "upvotes": {
+          "type": "number",
+          "description": "The number of upvotes the answer has received."
+        },
+        "downvotes": {
+          "type": "number",
+          "description": "The number of downvotes the answer has received."
+        },
+        "submissionDate": {
+          "type": "string",
+          "description": "The date and time the answer was submitted.",
+          "format": "date-time"
+        },
+        "tagIds": {
+          "type": "array",
+          "description": "References to Tags. (Relationship: Tag N:N Answer)",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "id",
+        "userId",
+        "questionId",
+        "content",
+        "upvotes",
+        "downvotes",
+        "submissionDate"
+      ]
+    },
+    "Tag": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Tag",
+      "type": "object",
+      "description": "Represents a tag that can be associated with questions and answers.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the tag."
+        },
+        "name": {
+          "type": "string",
+          "description": "The name of the tag."
+        }
+      },
+      "required": [
+        "id",
+        "name"
+      ]
+    }
+  },
+  "auth": {
+    "providers": [
+      "password",
+      "anonymous"
+    ]
+  },
+  "firestore": {
+    "structure": [
+      {
+        "path": "/users/{userId}",
+        "definition": {
+          "entityName": "User",
+          "schema": {
+            "$ref": "#/backend/entities/User"
+          },
+          "description": "Stores user profile information. Access is restricted to the user themselves. Includes userId as a parameter.",
+          "params": [
+            {
+              "name": "userId",
+              "description": "The unique identifier of the user."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/users/{userId}/questions/{questionId}",
+        "definition": {
+          "entityName": "Question",
+          "schema": {
+            "$ref": "#/backend/entities/Question"
+          },
+          "description": "Stores questions posted by a specific user.  Includes denormalized 'userId' field to ensure authorization independence for list operations. Enforces ownership via path-based rules. Includes userId and questionId as parameters.",
+          "params": [
+            {
+              "name": "userId",
+              "description": "The unique identifier of the user who posted the question."
+            },
+            {
+              "name": "questionId",
+              "description": "The unique identifier of the question."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/answers/{answerId}",
+        "definition": {
+          "entityName": "Answer",
+          "schema": {
+            "$ref": "#/backend/entities/Answer"
+          },
+          "description": "Stores answers to questions. Includes denormalized 'userId' and 'questionId' fields to ensure authorization independence. Includes answerId as a parameter.",
+          "params": [
+            {
+              "name": "answerId",
+              "description": "The unique identifier of the answer."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/tags/{tagId}",
+        "definition": {
+          "entityName": "Tag",
+          "schema": {
+            "$ref": "#/backend/entities/Tag"
+          },
+          "description": "Stores tags that can be associated with questions and answers. Includes tagId as a parameter.",
+          "params": [
+            {
+              "name": "tagId",
+              "description": "The unique identifier of the tag."
+            }
+          ]
+        }
+      }
+    ],
+    "reasoning": "The Firestore structure is designed to support ShareFlow's core features (question/answer submission, upvoting/downvoting, search, user authentication, tagging, and AI summarization) while prioritizing security, scalability, and debuggability. It adheres to the core design principles of Authorization Independence, Clarity of Intent, DBAC (Database-Based Access Control), and QAPs (Rules are not Filters).  \n\n**Authorization Independence (Denormalization):**  The structure avoids hierarchical authorization dependencies by denormalizing authorization-related data.  For example, instead of relying on `get()` calls to check user roles in parent documents, the necessary authorization information (e.g., the user's ID for ownership) is directly embedded within the child documents (Questions, Answers).\n\n**Structural Segregation (Homogeneous Security Posture):** Data with different access requirements are stored in separate collections.  For instance, user profiles are stored under `/users/{userId}`, ensuring that access is restricted to the user themselves.\n\n**Access Modeling:**  Path-based ownership is used for user-specific data (e.g., `/users/{userId}/questions/{questionId}`). This simplifies security rules based on ownership.  Membership Maps are not needed in this design, as the path structure allows for direct, secure access to user-owned data.\n\n**QAPs (Rules are not Filters):** The structure supports secure `list` operations. Because authorization is based on path and denormalized data, rules can efficiently filter data without requiring expensive `get()` calls, preventing rules from acting as filters.\n\n**Invariants:** The structure implicitly supports invariants such as ownership, creation timestamps, and tag relationships through the collection/document structure and the data validation performed within Firestore rules (not defined here, but enabled by the structure).\n\nThis design eliminates the need for custom claims by relying solely on the `request.auth.uid` and the data stored in Firestore. It prioritizes a clear, predictable schema, explicit state modeling (through document structure), and consistent naming conventions to enhance debuggability and maintainability."
+  }
+}

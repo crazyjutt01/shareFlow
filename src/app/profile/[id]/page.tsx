@@ -2,7 +2,7 @@
 'use client';
 import { notFound, useParams } from 'next/navigation';
 import { useDoc, useCollection, useFirestore, useMemoFirebase } from '@/firebase';
-import { doc, collection, query, where, orderBy } from 'firebase/firestore';
+import { doc, collection, query, where, orderBy, getDocs, documentId } from 'firebase/firestore';
 import type { User, Question, Answer } from '@/lib/types';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -11,7 +11,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Calendar, HelpCircle, MessageCircle, LoaderCircle } from 'lucide-react';
 import Link from 'next/link';
 import { Separator } from '@/components/ui/separator';
-import { useMemo } from 'react';
+import { useMemo, useEffect, useState } from 'react';
 
 const ProfileHeaderSkeleton = () => (
   <div className="flex items-center space-x-6">
@@ -71,7 +71,17 @@ const QuestionItem = ({ question }: { question: Question }) => (
 
 const AnswerItem = ({ answer, question }: { answer: Answer; question: Question | undefined }) => {
     if (!question) {
-        return null;
+        return (
+            <Card>
+                <CardHeader>
+                    <Skeleton className="h-5 w-3/4" />
+                </CardHeader>
+                <CardContent>
+                    <Skeleton className="h-4 w-full" />
+                    <Skeleton className="h-4 w-1/2 mt-2" />
+                </CardContent>
+            </Card>
+        );
     }
     return (
         <Link href={`/question/${answer.questionId}#answer-${answer.id}`} className="block">
@@ -96,6 +106,9 @@ export default function ProfilePage() {
     const { id } = useParams();
     const firestore = useFirestore();
 
+    const [questionsForAnswers, setQuestionsForAnswers] = useState<Map<string, Question>>(new Map());
+    const [isLoadingQuestionsForAnswers, setIsLoadingQuestionsForAnswers] = useState(false);
+
     const userProfileRef = useMemoFirebase(() => firestore && id ? doc(firestore, 'users', id as string) : null, [firestore, id]);
     const { data: userProfile, isLoading: isProfileLoading } = useDoc<User>(userProfileRef);
 
@@ -105,15 +118,53 @@ export default function ProfilePage() {
     const userAnswersQuery = useMemoFirebase(() => firestore && id ? query(collection(firestore, 'answers'), where('userId', '==', id), orderBy('submissionDate', 'desc')) : null, [firestore, id]);
     const { data: userAnswers, isLoading: areAnswersLoading } = useCollection<Answer>(userAnswersQuery);
     
-    const allQuestionsQuery = useMemoFirebase(() => firestore ? collection(firestore, 'questions') : null, [firestore]);
-    const { data: allQuestions, isLoading: areAllQuestionsLoading } = useCollection<Question>(allQuestionsQuery);
 
-    const questionsForAnswersMap = useMemo(() => {
-        if (!allQuestions) return new Map<string, Question>();
-        return new Map(allQuestions.map(q => [q.id, q]));
-    }, [allQuestions]);
+    useEffect(() => {
+        const fetchQuestionsForAnswers = async () => {
+            if (!firestore || !userAnswers || userAnswers.length === 0) {
+                return;
+            }
 
-    if (isProfileLoading || (!userProfile && isProfileLoading)) {
+            setIsLoadingQuestionsForAnswers(true);
+            const questionIds = [...new Set(userAnswers.map(a => a.questionId))];
+            
+            if (questionIds.length === 0) {
+                setQuestionsForAnswers(new Map());
+                setIsLoadingQuestionsForAnswers(false);
+                return;
+            }
+
+            try {
+                // Firestore 'in' query is limited to 30 elements. 
+                // We'll chunk the requests if there are more.
+                const chunks = [];
+                for (let i = 0; i < questionIds.length; i += 30) {
+                    chunks.push(questionIds.slice(i, i + 30));
+                }
+                
+                const questionDocs = await Promise.all(
+                    chunks.map(chunk => getDocs(query(collection(firestore, 'questions'), where(documentId(), 'in', chunk))))
+                );
+
+                const questionsMap = new Map<string, Question>();
+                questionDocs.forEach(snapshot => {
+                    snapshot.forEach(doc => {
+                        questionsMap.set(doc.id, { id: doc.id, ...doc.data() } as Question);
+                    });
+                });
+                
+                setQuestionsForAnswers(questionsMap);
+            } catch (error) {
+                console.error("Error fetching questions for answers:", error);
+            } finally {
+                setIsLoadingQuestionsForAnswers(false);
+            }
+        };
+
+        fetchQuestionsForAnswers();
+    }, [userAnswers, firestore]);
+
+    if (isProfileLoading) {
         return (
             <div className="space-y-8">
                 <ProfileHeaderSkeleton />
@@ -129,6 +180,7 @@ export default function ProfilePage() {
         notFound();
     }
 
+    const isLoadingActivities = areQuestionsLoading || areAnswersLoading || isLoadingQuestionsForAnswers;
 
     return (
         <div className="space-y-8">
@@ -157,14 +209,14 @@ export default function ProfilePage() {
                     )}
                 </TabsContent>
                 <TabsContent value="answers" className="mt-6">
-                    {areAnswersLoading || areAllQuestionsLoading ? (
+                    {areAnswersLoading || isLoadingQuestionsForAnswers ? (
                          <div className="flex justify-center items-center h-40">
                             <LoaderCircle className="h-8 w-8 animate-spin text-primary" />
                         </div>
                     ) : userAnswers && userAnswers.length > 0 ? (
                         <div className="space-y-4">
                             {userAnswers.map(a => {
-                                const relatedQuestion = questionsForAnswersMap.get(a.questionId);
+                                const relatedQuestion = questionsForAnswers.get(a.questionId);
                                 return <AnswerItem key={a.id} answer={a} question={relatedQuestion} />
                             })}
                         </div>

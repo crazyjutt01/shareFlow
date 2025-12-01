@@ -1,3 +1,4 @@
+
 'use client';
 
 import { notFound, useParams } from 'next/navigation';
@@ -26,6 +27,7 @@ const answerFormSchema = z.object({
 
 
 const QuestionDetails = ({ question, author }: { question: Question, author: User | null }) => {
+    const creationDate = question.creationDate ? new Date((question.creationDate as any).toDate()).toLocaleDateString() : '...';
     return (
         <div className="space-y-4">
             <h1 className="text-4xl font-bold font-headline text-foreground">{question.title}</h1>
@@ -40,12 +42,14 @@ const QuestionDetails = ({ question, author }: { question: Question, author: Use
                 <Separator orientation="vertical" className="h-4" />
                 <div className="flex items-center gap-1.5">
                     <Clock className="h-4 w-4" />
-                    <span>Asked {question.creationDate ? new Date(question.creationDate.toDate()).toLocaleDateString() : '...'}</span>
+                    <span>Asked {creationDate}</span>
                 </div>
             </div>
             <div className="flex flex-wrap gap-2">
                 {question.tags.map((tag) => (
-                    <Badge key={tag} variant="secondary">{tag}</Badge>
+                    <Link key={tag} href={`/questions?tag=${tag}`}>
+                        <Badge variant="secondary" className="hover:bg-primary/20">{tag}</Badge>
+                    </Link>
                 ))}
             </div>
         </div>
@@ -78,9 +82,9 @@ export default function QuestionPage() {
   const { data: question, isLoading: isQuestionLoading } = useDoc<Question>(questionRef);
 
   const authorRef = useMemoFirebase(() => (firestore && question?.userId) ? doc(firestore, 'users', question.userId) : null, [firestore, question?.userId]);
-  const { data: author } = useDoc<User>(authorRef);
+  const { data: author, isLoading: isAuthorLoading } = useDoc<User>(authorRef);
 
-  const answersQuery = useMemoFirebase(() => (firestore && id) ? query(collection(firestore, 'answers'), where('questionId', '==', id), orderBy('submissionDate', 'desc')) : null, [firestore, id]);
+  const answersQuery = useMemoFirebase(() => (firestore && id) ? query(collection(firestore, 'answers'), where('questionId', '==', id)) : null, [firestore, id]);
   const { data: answers, isLoading: areAnswersLoading } = useCollection<Answer>(answersQuery);
 
   const form = useForm<z.infer<typeof answerFormSchema>>({
@@ -110,7 +114,7 @@ export default function QuestionPage() {
     }
   }
 
-  if (isQuestionLoading || isAuthLoading) {
+  if (isQuestionLoading || isAuthLoading || isAuthorLoading) {
     return <QuestionSkeleton />;
   }
 

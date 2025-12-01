@@ -120,8 +120,13 @@ export default function QuestionPage() {
     return <QuestionSkeleton />;
   }
 
-  if (!question) {
+  if (!isQuestionLoading && !question) {
     notFound();
+  }
+
+  // We check for question again to satisfy TypeScript after the notFound() call
+  if (!question) {
+    return <QuestionSkeleton />;
   }
 
   const sortedAnswers = answers ? [...answers].sort((a, b) => (b.upvotes - b.downvotes) - (a.upvotes - a.downvotes)) : [];

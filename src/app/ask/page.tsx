@@ -26,10 +26,10 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { useToast } from "@/hooks/use-toast";
-import { useUser } from "@/firebase";
-import { postQuestion } from "../actions";
+import { useUser, useFirestore, addDocumentNonBlocking } from "@/firebase";
 import { LoaderCircle } from "lucide-react";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
+import { collection, serverTimestamp } from "firebase/firestore";
 
 const formSchema = z.object({
   title: z.string().min(10, "Title must be at least 10 characters long.").max(150, "Title cannot exceed 150 characters."),
@@ -41,6 +41,8 @@ export default function AskQuestionPage() {
   const router = useRouter();
   const { toast } = useToast();
   const { user, isUserLoading } = useUser();
+  const firestore = useFirestore();
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -58,7 +60,7 @@ export default function AskQuestionPage() {
   }, [user, isUserLoading, router]);
 
   async function onSubmit(values: z.infer<typeof formSchema>) {
-    if (!user) {
+    if (!user || !firestore) {
         toast({
             variant: "destructive",
             title: "Authentication Error",
@@ -67,26 +69,33 @@ export default function AskQuestionPage() {
         return;
     }
 
-    const formData = new FormData();
-    formData.append('title', values.title);
-    formData.append('description', values.description);
-    formData.append('tags', values.tags);
-    formData.append('userId', user.uid);
+    setIsSubmitting(true);
 
-    const result = await postQuestion(formData);
+    const questionData = {
+        userId: user.uid,
+        title: values.title,
+        description: values.description,
+        tags: values.tags.split(',').map(tag => tag.trim()),
+        creationDate: serverTimestamp(),
+        votes: 0,
+    };
 
-    if (result.success) {
-      toast({
-        title: "Question Posted!",
-        description: "Your question has been successfully submitted.",
-      });
-      router.push("/questions");
-    } else {
+    try {
+        addDocumentNonBlocking(collection(firestore, 'questions'), questionData);
+        
+        toast({
+            title: "Question Posted!",
+            description: "Your question has been successfully submitted.",
+        });
+        router.push("/questions");
+
+    } catch (e: any) {
         toast({
             variant: "destructive",
             title: "Failed to post question",
-            description: result.error,
+            description: e.message || 'An unexpected error occurred.',
         });
+        setIsSubmitting(false);
     }
   }
 
@@ -164,8 +173,8 @@ export default function AskQuestionPage() {
               />
             </CardContent>
             <CardFooter>
-              <Button type="submit" disabled={form.formState.isSubmitting}>
-                {form.formState.isSubmitting && <LoaderCircle className="mr-2 h-4 w-4 animate-spin" />}
+              <Button type="submit" disabled={isSubmitting}>
+                {isSubmitting && <LoaderCircle className="mr-2 h-4 w-4 animate-spin" />}
                 Post Your Question
               </Button>
             </CardFooter>

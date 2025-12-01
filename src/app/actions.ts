@@ -42,40 +42,6 @@ export async function getSummary(formData: FormData) {
   }
 }
 
-const questionSchema = z.object({
-    title: z.string().min(10).max(150),
-    description: z.string().min(20),
-    tags: z.string(),
-    userId: z.string(),
-});
-
-export async function postQuestion(formData: FormData) {
-    try {
-        const { title, description, tags, userId } = questionSchema.parse({
-            title: formData.get('title'),
-            description: formData.get('description'),
-            tags: formData.get('tags'),
-            userId: formData.get('userId'),
-        });
-        
-        await addDoc(collection(firestore, 'questions'), {
-            userId,
-            title,
-            description,
-            tags: tags.split(',').map(tag => tag.trim()),
-            creationDate: serverTimestamp(),
-            // a new question has no answers and 0 votes
-            answers: [],
-            votes: 0,
-        });
-
-        return { success: true, error: null };
-    } catch (e: any) {
-        console.error(e);
-        return { success: false, error: e.message || 'Failed to post question.' };
-    }
-}
-
 const answerSchema = z.object({
     content: z.string().min(1),
     questionId: z.string(),

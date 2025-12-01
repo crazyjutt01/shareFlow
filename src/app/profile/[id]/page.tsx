@@ -118,6 +118,8 @@ const AnswersTabContent = ({ userId, firestore }: { userId: string, firestore: a
 
     const relatedQuestionsQuery = useMemoFirebase(() => {
         if (!firestore || questionIdsFromAnswers.length === 0) return null;
+        // Firestore 'in' queries are limited to 30 items in the array.
+        // For a production app with more answers, pagination would be needed here.
         return query(collection(firestore, 'questions'), where('__name__', 'in', questionIdsFromAnswers.slice(0, 30)));
     }, [firestore, questionIdsFromAnswers]);
 
@@ -149,10 +151,11 @@ const AnswersTabContent = ({ userId, firestore }: { userId: string, firestore: a
 
 
 export default function ProfilePage() {
-    const { id } = useParams();
+    const params = useParams();
+    const id = params.id ? decodeURIComponent(params.id as string) : undefined;
     const firestore = useFirestore();
 
-    const userProfileRef = useMemoFirebase(() => firestore && id ? doc(firestore, 'users', id as string) : null, [firestore, id]);
+    const userProfileRef = useMemoFirebase(() => firestore && id ? doc(firestore, 'users', id) : null, [firestore, id]);
     const { data: userProfile, isLoading: isProfileLoading } = useDoc<User>(userProfileRef);
 
     // FIRST: Handle the loading state for the profile itself.

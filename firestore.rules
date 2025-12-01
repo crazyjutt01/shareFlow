@@ -14,12 +14,14 @@ service cloud.firestore {
     match /users/{userId} {
       allow read: if true;
       allow create: if isOwner(userId);
-      allow update, delete: if isOwner(userId);
+      // Allow users to update only their own username
+      allow update: if isOwner(userId) && request.resource.data.keys().hasOnly(['username']);
+      allow delete: if isOwner(userId);
     }
 
     match /questions/{questionId} {
       allow read: if true;
-      // Allow list reads if querying by tags or by a list of document IDs (for profile page)
+      // Allow list reads if querying by tags, by a list of document IDs (for profile page), or by user ID
       allow list: if request.query.keys().hasAny(['where', 'limit']) &&
                    (request.query.where[0].fieldPath == 'tags' || request.query.where[0].fieldPath == '__name__' || request.query.where[0].fieldPath == 'userId');
       allow create: if isSignedIn() &&
@@ -38,7 +40,7 @@ service cloud.firestore {
         request.resource.data.userId == request.auth.uid;
 
       // Allow users to update only the vote counts, and no other fields.
-      allow update: if isSignedIn() && request.resource.data.keys().hasOnly(['upvotes', 'downvotes']);
+      allow update: if isSignedIn() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['upvotes', 'downvotes']);
 
       allow delete: if isSignedIn() &&
         resource.data.userId == request.auth.uid;

@@ -2,7 +2,7 @@
 'use client';
 import { notFound, useParams } from 'next/navigation';
 import { useDoc, useFirestore, useMemoFirebase } from '@/firebase';
-import { doc, collection, query, where, orderBy, getDocs, DocumentData } from 'firebase/firestore';
+import { doc, collection, query, where, orderBy } from 'firebase/firestore';
 import type { User, Question, Answer } from '@/lib/types';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -12,7 +12,7 @@ import { Calendar, HelpCircle, MessageCircle, LoaderCircle } from 'lucide-react'
 import Link from 'next/link';
 import { Separator } from '@/components/ui/separator';
 import { WithId, useCollection } from '@/firebase/firestore/use-collection';
-import { useMemo, useState, useEffect } from 'react';
+import { useMemo } from 'react';
 
 const ProfileHeaderSkeleton = () => (
   <div className="flex items-center space-x-6">
@@ -119,55 +119,27 @@ export default function ProfilePage() {
     const userAnswersQuery = useMemoFirebase(() => firestore && id ? query(collection(firestore, 'answers'), where('userId', '==', id), orderBy('submissionDate', 'desc')) : null, [firestore, id]);
     const { data: userAnswers, isLoading: areAnswersLoading } = useCollection<WithId<Answer>>(userAnswersQuery);
 
-    const [relatedQuestions, setRelatedQuestions] = useState<Map<string, WithId<Question>>>(new Map());
-    const [areRelatedQuestionsLoading, setAreRelatedQuestionsLoading] = useState(true);
+    const questionIdsFromAnswers = useMemo(() => {
+        if (!userAnswers) return [];
+        return [...new Set(userAnswers.map(a => a.questionId))];
+    }, [userAnswers]);
 
-    useEffect(() => {
-        if (!userAnswers || !firestore) {
-            if (!areAnswersLoading) setAreRelatedQuestionsLoading(false);
-            return;
-        }
+    const relatedQuestionsQuery = useMemoFirebase(() => {
+        if (!firestore || questionIdsFromAnswers.length === 0) return null;
+        // Firestore 'in' query is limited to 30 items per query.
+        // For this app, we'll assume a user answers fewer than 30 unique questions for their profile view.
+        // For a production app, you might need to chunk this into multiple queries.
+        return query(collection(firestore, 'questions'), where('__name__', 'in', questionIdsFromAnswers.slice(0, 30)));
+    }, [firestore, questionIdsFromAnswers]);
 
-        const fetchRelatedQuestions = async () => {
-            const questionIds = [...new Set(userAnswers.map(a => a.questionId))];
-            
-            if (questionIds.length === 0) {
-                setRelatedQuestions(new Map());
-                setAreRelatedQuestionsLoading(false);
-                return;
-            }
-            
-            setAreRelatedQuestionsLoading(true);
-            try {
-                const questionDocs = new Map<string, WithId<Question>>();
-                // Firestore 'in' query is limited to 30 items. We need to chunk the IDs.
-                const idChunks: string[][] = [];
-                for (let i = 0; i < questionIds.length; i += 30) {
-                    idChunks.push(questionIds.slice(i, i + 30));
-                }
+    const { data: relatedQuestionsData, isLoading: areRelatedQuestionsLoading } = useCollection<WithId<Question>>(relatedQuestionsQuery);
 
-                await Promise.all(idChunks.map(async chunk => {
-                    const q = query(collection(firestore, 'questions'), where('__name__', 'in', chunk));
-                    const querySnapshot = await getDocs(q);
-                    querySnapshot.forEach(doc => {
-                        questionDocs.set(doc.id, { id: doc.id, ...doc.data() } as WithId<Question>);
-                    });
-                }));
-                
-                setRelatedQuestions(questionDocs);
-            } catch (e) {
-                console.error("Error fetching related questions:", e);
-                setRelatedQuestions(new Map());
-            } finally {
-                setAreRelatedQuestionsLoading(false);
-            }
-        };
+    const relatedQuestionsMap = useMemo(() => {
+        const map = new Map<string, WithId<Question>>();
+        relatedQuestionsData?.forEach(q => map.set(q.id, q));
+        return map;
+    }, [relatedQuestionsData]);
 
-        fetchRelatedQuestions();
-
-    }, [userAnswers, firestore, areAnswersLoading]);
-
-    const isLoading = isProfileLoading || areQuestionsLoading || areAnswersLoading || areRelatedQuestionsLoading;
 
     if (isProfileLoading) {
         return (
@@ -177,8 +149,13 @@ export default function ProfilePage() {
         )
     }
     
-    if (!userProfile) {
+    if (!isProfileLoading && !userProfile) {
         return notFound();
+    }
+
+    // This check is required because userProfile could be null
+    if (!userProfile) {
+        return <div className="flex justify-center items-center h-[calc(100vh-10rem)]"><LoaderCircle className="h-8 w-8 animate-spin text-primary" /></div>;
     }
 
     return (
@@ -217,7 +194,7 @@ export default function ProfilePage() {
                     ) : userAnswers && userAnswers.length > 0 ? (
                         <div className="space-y-4">
                             {userAnswers.map(a => {
-                                const relatedQuestion = relatedQuestions.get(a.questionId);
+                                const relatedQuestion = relatedQuestionsMap.get(a.questionId);
                                 return <AnswerItem key={a.id} answer={a} question={relatedQuestion} />
                             })}
                         </div>

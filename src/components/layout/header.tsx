@@ -1,3 +1,4 @@
+
 "use client";
 
 import Link from 'next/link';
@@ -11,7 +12,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Plus, LogIn, UserPlus, LogOut, User as UserIcon } from 'lucide-react';
+import { Plus, LogIn, UserPlus, LogOut, User as UserIcon, Settings } from 'lucide-react';
 import { Logo } from '../logo';
 import { useUser, useAuth } from '@/firebase';
 import { Skeleton } from '../ui/skeleton';
@@ -31,6 +32,10 @@ export default function Header() {
     if (user) {
       router.push(`/profile/${user.uid}`);
     }
+  };
+
+  const navigateToSettings = () => {
+    router.push('/settings');
   };
 
   return (
@@ -84,7 +89,10 @@ export default function Header() {
                   <UserIcon className="mr-2 h-4 w-4" />
                   <span>Profile</span>
                 </DropdownMenuItem>
-                <DropdownMenuItem>Settings</DropdownMenuItem>
+                <DropdownMenuItem onClick={navigateToSettings}>
+                  <Settings className="mr-2 h-4 w-4" />
+                  <span>Settings</span>
+                </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={handleLogout}>
                   <LogOut className="mr-2 h-4 w-4" />

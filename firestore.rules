@@ -15,22 +15,33 @@ service cloud.firestore {
       allow create: if isOwner(userId);
       allow update, delete: if isOwner(userId);
     }
-    
+
     match /questions/{questionId} {
-      allow read: if true; // includes list and get
-      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
-      allow update, delete: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow read: if true;
+      allow create: if isSignedIn() &&
+        request.resource.data.userId == request.auth.uid;
+      allow update, delete: if isSignedIn() &&
+        resource.data.userId == request.auth.uid;
     }
 
     match /answers/{answerId} {
       allow read: if true;
-      // Allow querying answers by questionId OR by userId
-      allow list: if (request.query.keys().hasAny(['where']) && request.query.where[0].fieldPath == 'questionId') || (request.query.keys().hasAny(['where']) && request.query.where[0].fieldPath == 'userId');
-      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
-      // Allow anyone signed in to update votes, but not other fields
-      allow update: if isSignedIn() && request.resource.data.keys().hasOnly(['upvotes', 'downvotes']);
-      // Only the author can delete their own answer
-      allow delete: if isSignedIn() && resource.data.userId == request.auth.uid;
+
+      // --- SAFE LIST QUERY RULE ---
+      allow list: if
+        request.query.where is list &&
+        request.query.where.size() > 0 &&
+        request.query.where[0].fieldPath in ['questionId', 'userId'];
+
+      allow create: if isSignedIn() &&
+        request.resource.data.userId == request.auth.uid;
+
+      // Only allow updating vote fields
+      allow update: if isSignedIn() &&
+        request.resource.data.keys().hasOnly(['upvotes', 'downvotes']);
+
+      allow delete: if isSignedIn() &&
+        resource.data.userId == request.auth.uid;
     }
   }
 }

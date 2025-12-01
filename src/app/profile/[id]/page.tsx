@@ -14,29 +14,6 @@ import { Separator } from '@/components/ui/separator';
 import { WithId, useCollection } from '@/firebase/firestore/use-collection';
 import { useMemo } from 'react';
 
-const ProfileHeaderSkeleton = () => (
-  <div className="flex items-center space-x-6">
-    <Skeleton className="h-24 w-24 rounded-full" />
-    <div className="space-y-2">
-      <Skeleton className="h-8 w-48" />
-      <Skeleton className="h-5 w-64" />
-    </div>
-  </div>
-);
-
-const ActivityCardSkeleton = () => (
-    <Card>
-        <CardHeader>
-            <Skeleton className="h-6 w-1/2" />
-        </CardHeader>
-        <CardContent className="space-y-2">
-            <Skeleton className="h-4 w-full" />
-            <Skeleton className="h-4 w-full" />
-            <Skeleton className="h-4 w-2/3" />
-        </CardContent>
-    </Card>
-)
-
 const ProfileHeader = ({ user }: { user: User }) => {
     const registrationDate = user.registrationDate
     ? new Date((user.registrationDate as any).toDate ? (user.registrationDate as any).toDate() : user.registrationDate).toLocaleDateString()
@@ -111,18 +88,27 @@ const AnswerItem = ({ answer, question }: { answer: WithId<Answer>; question: Wi
     );
 };
 
+const QuestionsTabContent = ({ userId, firestore }: { userId: string, firestore: any }) => {
+    const userQuestionsQuery = useMemoFirebase(() => firestore ? query(collection(firestore, 'questions'), where('userId', '==', userId), orderBy('creationDate', 'desc')) : null, [firestore, userId]);
+    const { data: userQuestions, isLoading } = useCollection<WithId<Question>>(userQuestionsQuery);
 
-export default function ProfilePage() {
-    const { id } = useParams();
-    const firestore = useFirestore();
+    if (isLoading) {
+        return <div className="space-y-4 mt-6"><Skeleton className="h-24 w-full" /><Skeleton className="h-24 w-full" /></div>
+    }
 
-    const userProfileRef = useMemoFirebase(() => firestore && id ? doc(firestore, 'users', id as string) : null, [firestore, id]);
-    const { data: userProfile, isLoading: isProfileLoading } = useDoc<User>(userProfileRef);
+    if (userQuestions && userQuestions.length > 0) {
+        return (
+            <div className="space-y-4">
+                {userQuestions.map(q => <QuestionItem key={q.id} question={q} />)}
+            </div>
+        )
+    }
 
-    const userQuestionsQuery = useMemoFirebase(() => firestore && id ? query(collection(firestore, 'questions'), where('userId', '==', id), orderBy('creationDate', 'desc')) : null, [firestore, id]);
-    const { data: userQuestions, isLoading: areQuestionsLoading } = useCollection<WithId<Question>>(userQuestionsQuery);
-    
-    const userAnswersQuery = useMemoFirebase(() => firestore && id ? query(collection(firestore, 'answers'), where('userId', '==', id), orderBy('submissionDate', 'desc')) : null, [firestore, id]);
+    return <p className="text-center text-muted-foreground py-8">This user hasn't asked any questions yet.</p>;
+}
+
+const AnswersTabContent = ({ userId, firestore }: { userId: string, firestore: any }) => {
+    const userAnswersQuery = useMemoFirebase(() => firestore ? query(collection(firestore, 'answers'), where('userId', '==', userId), orderBy('submissionDate', 'desc')) : null, [firestore, userId]);
     const { data: userAnswers, isLoading: areAnswersLoading } = useCollection<WithId<Answer>>(userAnswersQuery);
 
     const questionIdsFromAnswers = useMemo(() => {
@@ -132,7 +118,6 @@ export default function ProfilePage() {
 
     const relatedQuestionsQuery = useMemoFirebase(() => {
         if (!firestore || questionIdsFromAnswers.length === 0) return null;
-        // Firestore 'in' queries are limited to 30 values.
         return query(collection(firestore, 'questions'), where('__name__', 'in', questionIdsFromAnswers.slice(0, 30)));
     }, [firestore, questionIdsFromAnswers]);
 
@@ -144,9 +129,34 @@ export default function ProfilePage() {
         return map;
     }, [relatedQuestionsData]);
 
-    const isLoading = isProfileLoading || areQuestionsLoading || areAnswersLoading || areRelatedQuestionsLoading;
+    if (areAnswersLoading || areRelatedQuestionsLoading) {
+        return <div className="space-y-4 mt-6"><Skeleton className="h-24 w-full" /><Skeleton className="h-24 w-full" /></div>
+    }
 
-    if (isLoading) {
+    if (userAnswers && userAnswers.length > 0) {
+        return (
+            <div className="space-y-4">
+                {userAnswers.map(a => {
+                    const relatedQuestion = relatedQuestionsMap.get(a.questionId);
+                    return <AnswerItem key={a.id} answer={a} question={relatedQuestion} />
+                })}
+            </div>
+        )
+    }
+    
+    return <p className="text-center text-muted-foreground py-8">This user hasn't answered any questions yet.</p>;
+}
+
+
+export default function ProfilePage() {
+    const { id } = useParams();
+    const firestore = useFirestore();
+
+    const userProfileRef = useMemoFirebase(() => firestore && id ? doc(firestore, 'users', id as string) : null, [firestore, id]);
+    const { data: userProfile, isLoading: isProfileLoading } = useDoc<User>(userProfileRef);
+
+    // FIRST: Handle the loading state for the profile itself.
+    if (isProfileLoading) {
         return (
              <div className="flex justify-center items-center h-[calc(100vh-10rem)]">
                 <LoaderCircle className="h-8 w-8 animate-spin text-primary" />
@@ -154,10 +164,12 @@ export default function ProfilePage() {
         )
     }
     
+    // SECOND: After loading is complete, check if the profile exists.
     if (!userProfile) {
         return notFound();
     }
 
+    // THIRD: If the profile exists, render the page and let the tabs handle their own loading.
     return (
         <div className="space-y-8">
             <ProfileHeader user={userProfile} />
@@ -165,32 +177,17 @@ export default function ProfilePage() {
             <Tabs defaultValue="questions" className="w-full">
                 <TabsList className="grid w-full grid-cols-2 max-w-md mx-auto">
                     <TabsTrigger value="questions">
-                        <HelpCircle className="mr-2 h-4 w-4" /> Questions ({userQuestions?.length || 0})
+                        <HelpCircle className="mr-2 h-4 w-4" /> Questions
                     </TabsTrigger>
                     <TabsTrigger value="answers">
-                        <MessageCircle className="mr-2 h-4 w-4" /> Answers ({userAnswers?.length || 0})
+                        <MessageCircle className="mr-2 h-4 w-4" /> Answers
                     </TabsTrigger>
                 </TabsList>
                 <TabsContent value="questions" className="mt-6">
-                    {userQuestions && userQuestions.length > 0 ? (
-                        <div className="space-y-4">
-                            {userQuestions.map(q => <QuestionItem key={q.id} question={q} />)}
-                        </div>
-                    ) : (
-                        <p className="text-center text-muted-foreground py-8">This user hasn't asked any questions yet.</p>
-                    )}
+                   <QuestionsTabContent userId={id as string} firestore={firestore} />
                 </TabsContent>
                 <TabsContent value="answers" className="mt-6">
-                    {userAnswers && userAnswers.length > 0 ? (
-                        <div className="space-y-4">
-                            {userAnswers.map(a => {
-                                const relatedQuestion = relatedQuestionsMap.get(a.questionId);
-                                return <AnswerItem key={a.id} answer={a} question={relatedQuestion} />
-                            })}
-                        </div>
-                    ) : (
-                         <p className="text-center text-muted-foreground py-8">This user hasn't answered any questions yet.</p>
-                    )}
+                    <AnswersTabContent userId={id as string} firestore={firestore} />
                 </TabsContent>
             </Tabs>
         </div>

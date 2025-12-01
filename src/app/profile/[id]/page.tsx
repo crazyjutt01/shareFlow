@@ -68,14 +68,13 @@ const QuestionItem = ({ question }: { question: Question }) => (
     </Link>
 );
 
-const AnswerItem = ({ answer, questions }: { answer: Answer; questions: Question[] }) => {
-    const relatedQuestion = questions.find(q => q.id === answer.questionId);
+const AnswerItem = ({ answer, question }: { answer: Answer; question: Question | undefined }) => {
     return (
         <Link href={`/question/${answer.questionId}#answer-${answer.id}`} className="block">
             <Card className="hover:border-primary/50 transition-colors">
                 <CardHeader>
                     <CardTitle className="text-base font-semibold hover:text-primary">
-                        Answer to: {relatedQuestion ? relatedQuestion.title : '...'}
+                        Answer to: {question ? question.title : '...'}
                     </CardTitle>
                 </CardHeader>
                 <CardContent className="text-sm">
@@ -106,6 +105,7 @@ export default function ProfilePage() {
 
     const answersQuestionsQuery = useMemoFirebase(() => {
         if (!firestore || !questionIdsForAnswers || questionIdsForAnswers.length === 0) return null;
+        // Firestore 'in' queries are limited to 30 elements.
         const safeQuestionIds = questionIdsForAnswers.slice(0, 30);
         return query(collection(firestore, 'questions'), where('__name__', 'in', safeQuestionIds));
     }, [firestore, questionIdsForAnswers]);
@@ -113,7 +113,7 @@ export default function ProfilePage() {
     const { data: questionsForAnswers, isLoading: areAnswerQuestionsLoading } = useCollection<Question>(answersQuestionsQuery);
 
 
-    if (isProfileLoading) {
+    if (isProfileLoading || !userProfile) {
         return (
             <div className="space-y-8">
                 <ProfileHeaderSkeleton />
@@ -123,10 +123,6 @@ export default function ProfilePage() {
                 </div>
             </div>
         )
-    }
-
-    if (!userProfile) {
-        notFound();
     }
 
     return (
@@ -162,7 +158,10 @@ export default function ProfilePage() {
                         </div>
                     ) : userAnswers && userAnswers.length > 0 && questionsForAnswers ? (
                         <div className="space-y-4">
-                            {userAnswers.map(a => <AnswerItem key={a.id} answer={a} questions={questionsForAnswers} />)}
+                            {userAnswers.map(a => {
+                                const relatedQuestion = questionsForAnswers.find(q => q.id === a.questionId);
+                                return <AnswerItem key={a.id} answer={a} question={relatedQuestion} />
+                            })}
                         </div>
                     ) : (
                          <p className="text-center text-muted-foreground py-8">This user hasn't answered any questions yet.</p>

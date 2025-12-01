@@ -1,3 +1,4 @@
+
 'use client';
 import { notFound, useParams } from 'next/navigation';
 import { useDoc, useFirestore, useMemoFirebase } from '@/firebase';
@@ -169,24 +170,23 @@ export default function ProfilePage() {
 
     }, [userAnswers, firestore, areAnswersLoading]);
 
-    // Consolidated loading state
-    const isLoading = isProfileLoading || areQuestionsLoading || areAnswersLoading || areRelatedQuestionsLoading;
-    
-    if (!isProfileLoading && !userProfile) {
-        return notFound();
-    }
-    
-    if (isLoading && !userProfile) {
+    if (isProfileLoading) {
         return (
              <div className="flex justify-center items-center h-[calc(100vh-10rem)]">
                 <LoaderCircle className="h-8 w-8 animate-spin text-primary" />
             </div>
         )
     }
+    
+    if (!userProfile) {
+        return notFound();
+    }
+    
+    const isLoading = areQuestionsLoading || areAnswersLoading || areRelatedQuestionsLoading;
 
     return (
         <div className="space-y-8">
-            {isProfileLoading || !userProfile ? <ProfileHeaderSkeleton/> : <ProfileHeader user={userProfile} />}
+            <ProfileHeader user={userProfile} />
             <Separator />
             <Tabs defaultValue="questions" className="w-full">
                 <TabsList className="grid w-full grid-cols-2 max-w-md mx-auto">
@@ -198,7 +198,7 @@ export default function ProfilePage() {
                     </TabsTrigger>
                 </TabsList>
                 <TabsContent value="questions" className="mt-6">
-                     {areQuestionsLoading ? (
+                     {isLoading ? (
                         <div className="space-y-4">
                             <ActivityCardSkeleton />
                             <ActivityCardSkeleton />
@@ -212,7 +212,7 @@ export default function ProfilePage() {
                     )}
                 </TabsContent>
                 <TabsContent value="answers" className="mt-6">
-                    {areAnswersLoading || areRelatedQuestionsLoading ? (
+                    {isLoading ? (
                          <div className="space-y-4">
                             <ActivityCardSkeleton />
                             <ActivityCardSkeleton />

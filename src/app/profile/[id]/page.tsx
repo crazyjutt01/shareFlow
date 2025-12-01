@@ -182,9 +182,7 @@ export default function ProfilePage() {
         return notFound();
     }
     
-    // This check should only happen after the initial profile load is complete.
     if (!userProfile) {
-        // This should theoretically not be reached if the above notFound() is working, but as a safeguard.
         return (
              <div className="flex justify-center items-center h-[calc(100vh-10rem)]">
                 <LoaderCircle className="h-8 w-8 animate-spin text-primary" />

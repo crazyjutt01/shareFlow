@@ -8,7 +8,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Calendar, HelpCircle, MessageCircle, LoaderCircle } from 'lucide-react';
+import { Calendar, HelpCircle, MessageCircle, LoaderCircle, Star } from 'lucide-react';
 import Link from 'next/link';
 import { Separator } from '@/components/ui/separator';
 import { WithId, useCollection } from '@/firebase/firestore/use-collection';
@@ -50,9 +50,15 @@ const ProfileHeader = ({ user }: { user: User }) => {
         </Avatar>
         <div>
           <h1 className="text-3xl font-bold font-headline">{user.username}</h1>
-          <div className="flex items-center text-muted-foreground mt-1">
-            <Calendar className="mr-2 h-4 w-4" />
-            <span>Joined on {registrationDate}</span>
+          <div className="flex items-center text-muted-foreground mt-1 space-x-4">
+            <div className="flex items-center">
+              <Star className="mr-1.5 h-4 w-4 text-accent" />
+              <span>{user.reputation || 0} reputation</span>
+            </div>
+            <div className="flex items-center">
+              <Calendar className="mr-1.5 h-4 w-4" />
+              <span>Joined on {registrationDate}</span>
+            </div>
           </div>
         </div>
       </div>
@@ -126,9 +132,6 @@ export default function ProfilePage() {
 
     const relatedQuestionsQuery = useMemoFirebase(() => {
         if (!firestore || questionIdsFromAnswers.length === 0) return null;
-        // Firestore 'in' query is limited to 30 items per query.
-        // For this app, we'll assume a user answers fewer than 30 unique questions for their profile view.
-        // For a production app, you might need to chunk this into multiple queries.
         return query(collection(firestore, 'questions'), where('__name__', 'in', questionIdsFromAnswers.slice(0, 30)));
     }, [firestore, questionIdsFromAnswers]);
 
@@ -141,7 +144,9 @@ export default function ProfilePage() {
     }, [relatedQuestionsData]);
 
 
-    if (isProfileLoading) {
+    const isLoading = isProfileLoading || areQuestionsLoading || areAnswersLoading;
+
+    if (isLoading) {
         return (
              <div className="flex justify-center items-center h-[calc(100vh-10rem)]">
                 <LoaderCircle className="h-8 w-8 animate-spin text-primary" />
@@ -153,7 +158,6 @@ export default function ProfilePage() {
         return notFound();
     }
 
-    // This check is required because userProfile could be null
     if (!userProfile) {
         return <div className="flex justify-center items-center h-[calc(100vh-10rem)]"><LoaderCircle className="h-8 w-8 animate-spin text-primary" /></div>;
     }

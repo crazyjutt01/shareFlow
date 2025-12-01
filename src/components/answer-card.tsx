@@ -74,7 +74,12 @@ export default function AnswerCard({ answer, questionTitle, isTopAnswer }: Answe
     <Card className="overflow-hidden" id={`answer-${answer.id}`}>
       <div className="flex">
         <div className="p-4 bg-muted/50 flex flex-col items-center space-y-2 w-20">
-          <VoteControl answerId={answer.id} initialUpvotes={answer.upvotes} initialDownvotes={answer.downvotes} />
+          <VoteControl 
+            answerId={answer.id} 
+            authorId={answer.userId}
+            initialUpvotes={answer.upvotes} 
+            initialDownvotes={answer.downvotes} 
+          />
         </div>
         <div className="flex-1">
           <CardContent className="p-6 space-y-4">

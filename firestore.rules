@@ -14,7 +14,8 @@ service cloud.firestore {
     match /users/{userId} {
       allow read: if true;
       allow create: if isOwner(userId);
-      allow update: if isOwner(userId) && request.resource.data.email == resource.data.email && request.resource.data.registrationDate == resource.data.registrationDate;
+      allow update: if (isOwner(userId) && request.resource.data.keys().hasOnly(['username', 'photoURL'])) ||
+                      (isSignedIn() && request.resource.data.keys().hasOnly(['reputation']));
       allow delete: if isOwner(userId);
     }
 
@@ -27,7 +28,7 @@ service cloud.firestore {
       // Allow update for title/description by owner, OR for vote changes by any signed in user
       allow update: if isSignedIn() && (
         (isOwner(resource.data.userId) && request.resource.data.keys().hasAll(['title', 'description'])) ||
-        (request.resource.data.keys().hasOnly(['votes']) && request.resource.data.votes == resource.data.votes + 1)
+        (request.resource.data.keys().hasOnly(['votes']))
       );
       allow delete: if isOwner(resource.data.userId);
     }
@@ -43,7 +44,7 @@ service cloud.firestore {
 
       // Allow users to update vote counts OR content if they are the owner
       allow update: if isSignedIn() && (
-        (request.resource.data.keys().hasAny(['upvotes', 'downvotes']) && !request.resource.data.keys().hasAny(['content'])) ||
+        (request.resource.data.keys().hasAny(['upvotes', 'downvotes'])) ||
         (isOwner(resource.data.userId) && request.resource.data.keys().hasOnly(['content']))
       );
 

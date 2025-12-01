@@ -26,11 +26,12 @@ import { useRouter } from "next/navigation";
 import {
   useAuth,
   useFirestore,
-  initiateEmailSignUp,
   setDocumentNonBlocking,
 } from "@/firebase";
 import { doc } from "firebase/firestore";
 import { LoaderCircle } from "lucide-react";
+import { createUserWithEmailAndPassword } from "firebase/auth";
+
 
 const formSchema = z.object({
   fullName: z.string().min(2, "Name must be at least 2 characters."),
@@ -54,10 +55,12 @@ export default function SignupPage() {
   });
 
   const onSubmit = async (values: z.infer<typeof formSchema>) => {
+    if (!auth || !firestore) {
+      toast({ variant: "destructive", title: "Firebase not initialized." });
+      return;
+    }
     try {
-      // This part now needs to get the user credential to get the UID
-      // We can't use the non-blocking version if we need the UID right away.
-      const userCredential = await auth.createUserWithEmailAndPassword(values.email, values.password);
+      const userCredential = await createUserWithEmailAndPassword(auth, values.email, values.password);
       const user = userCredential.user;
 
       if (user) {
@@ -67,8 +70,8 @@ export default function SignupPage() {
           username: values.fullName,
           email: values.email,
           registrationDate: new Date().toISOString(),
+          reputation: 0,
         };
-        // Use the non-blocking write to Firestore.
         setDocumentNonBlocking(userRef, userData, { merge: true });
 
         toast({

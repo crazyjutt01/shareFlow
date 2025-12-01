@@ -6,7 +6,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { ArrowUp, MessageSquare } from 'lucide-react';
 import type { Question, User } from '@/lib/types';
 import { useDoc, useFirestore, useCollection, useMemoFirebase, useUser, updateDocumentNonBlocking } from '@/firebase';
-import { doc, collection, query, where, increment } from 'firebase/firestore';
+import { doc, collection, query, where, increment, writeBatch } from 'firebase/firestore';
 import { Skeleton } from './ui/skeleton';
 import { Button } from './ui/button';
 import { cn } from '@/lib/utils';
@@ -65,14 +65,26 @@ export default function QuestionCard({ question }: QuestionCardProps) {
     if (!firestore) return;
     
     setIsVoting(true);
+    
     const questionRef = doc(firestore, 'questions', question.id);
+    const authorRef = doc(firestore, 'users', question.userId);
+
+    const batch = writeBatch(firestore);
     
-    // For simplicity, we just increment. A real app would track who voted.
-    updateDocumentNonBlocking(questionRef, { votes: increment(1) });
+    // Increment question votes
+    batch.update(questionRef, { votes: increment(1) });
+    // Increment author reputation
+    batch.update(authorRef, { reputation: increment(5) });
+
+    // We commit the batch non-blockingly, but don't need to await it.
+    batch.commit().catch(error => {
+      // In a real app, you might want to handle this error more gracefully
+      console.error("Failed to apply vote and reputation update:", error);
+      toast({ variant: 'destructive', title: 'Vote failed', description: 'Could not apply your vote.' });
+    });
     
-    // We don't need to set isVoting to false, as the component will re-render
-    // with the optimistic update and the button will be gone.
-    // For this simple implementation, we're not handling un-voting.
+    // For simplicity, we're not handling un-voting or tracking who voted.
+    // The UI will optimistically update via re-render.
   }
 
   return (

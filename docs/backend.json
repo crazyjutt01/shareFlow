@@ -28,6 +28,10 @@
           "type": "string",
           "description": "URL of the user's profile picture.",
           "format": "uri"
+        },
+        "reputation": {
+            "type": "number",
+            "description": "The user's reputation score, earned from upvotes."
         }
       },
       "required": [

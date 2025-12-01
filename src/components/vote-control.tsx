@@ -4,17 +4,18 @@ import { useState } from 'react';
 import { Button } from './ui/button';
 import { ArrowUp, ArrowDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { useFirestore, useUser, updateDocumentNonBlocking } from '@/firebase';
-import { doc, increment } from 'firebase/firestore';
+import { useFirestore, useUser } from '@/firebase';
+import { doc, increment, writeBatch } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast';
 
 interface VoteControlProps {
     answerId: string;
+    authorId: string; // The ID of the user who wrote the answer
     initialUpvotes: number;
     initialDownvotes: number;
 }
 
-export default function VoteControl({ answerId, initialUpvotes, initialDownvotes }: VoteControlProps) {
+export default function VoteControl({ answerId, authorId, initialUpvotes, initialDownvotes }: VoteControlProps) {
   const [voted, setVoted] = useState<'up' | 'down' | null>(null);
   const firestore = useFirestore();
   const { user } = useUser();
@@ -27,25 +28,32 @@ export default function VoteControl({ answerId, initialUpvotes, initialDownvotes
     }
     if (!firestore) return;
 
+    // Again, not tracking who voted, so users can vote multiple times.
     const answerRef = doc(firestore, 'answers', answerId);
+    const authorRef = doc(firestore, 'users', authorId);
+    
+    const batch = writeBatch(firestore);
     let voteUpdate = {};
+    let reputationUpdate = {};
 
-    if (voted === type) { // Un-voting
-        voteUpdate = type === 'up' ? { upvotes: increment(-1) } : { downvotes: increment(-1) };
-        setVoted(null);
-    } else if (voted) { // Changing vote
-        if (type === 'up') {
-            voteUpdate = { upvotes: increment(1), downvotes: increment(-1) };
-        } else {
-            voteUpdate = { upvotes: increment(-1), downvotes: increment(1) };
-        }
-        setVoted(type);
-    } else { // New vote
-        voteUpdate = type === 'up' ? { upvotes: increment(1) } : { downvotes: increment(1) };
-        setVoted(type);
+    if (type === 'up') {
+        voteUpdate = { upvotes: increment(1) };
+        reputationUpdate = { reputation: increment(10) }; // +10 for an upvote
+    } else {
+        voteUpdate = { downvotes: increment(1) };
+        reputationUpdate = { reputation: increment(-2) }; // -2 for a downvote
     }
 
-    updateDocumentNonBlocking(answerRef, voteUpdate);
+    batch.update(answerRef, voteUpdate);
+    batch.update(authorRef, reputationUpdate);
+
+    // Commit the batch non-blockingly
+    batch.commit().catch(error => {
+        console.error("Failed to apply vote and reputation update:", error);
+        toast({ variant: 'destructive', title: 'Vote failed', description: 'Could not apply your vote.' });
+    });
+
+    setVoted(type); // Optimistically set the voted state
   };
   
   // This is an optimistic update. We're not reading the votes back from the DB.
@@ -57,6 +65,7 @@ export default function VoteControl({ answerId, initialUpvotes, initialDownvotes
         variant="ghost"
         size="icon"
         onClick={() => handleVote('up')}
+        disabled={voted !== null}
         className={cn(
           "h-8 w-8 rounded-full transition-colors duration-200",
           voted === 'up' && 'bg-accent/20 text-accent'
@@ -69,6 +78,7 @@ export default function VoteControl({ answerId, initialUpvotes, initialDownvotes
         variant="ghost"
         size="icon"
         onClick={() => handleVote('down')}
+        disabled={voted !== null}
         className={cn(
           "h-8 w-8 rounded-full transition-colors duration-200",
           voted === 'down' && 'bg-destructive/20 text-destructive'

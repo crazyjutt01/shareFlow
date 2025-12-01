@@ -1,3 +1,4 @@
+
 'use client';
 import { notFound, useParams } from 'next/navigation';
 import { useDoc, useCollection, useFirestore, useMemoFirebase } from '@/firebase';
@@ -69,12 +70,15 @@ const QuestionItem = ({ question }: { question: Question }) => (
 );
 
 const AnswerItem = ({ answer, question }: { answer: Answer; question: Question | undefined }) => {
+    if (!question) {
+        return null; // Or a loading/placeholder state
+    }
     return (
         <Link href={`/question/${answer.questionId}#answer-${answer.id}`} className="block">
             <Card className="hover:border-primary/50 transition-colors">
                 <CardHeader>
                     <CardTitle className="text-base font-semibold hover:text-primary">
-                        Answer to: {question ? question.title : '...'}
+                        Answer to: {question.title}
                     </CardTitle>
                 </CardHeader>
                 <CardContent className="text-sm">
@@ -101,19 +105,18 @@ export default function ProfilePage() {
     const userAnswersQuery = useMemoFirebase(() => firestore && id ? query(collection(firestore, 'answers'), where('userId', '==', id), orderBy('submissionDate', 'desc')) : null, [firestore, id]);
     const { data: userAnswers, isLoading: areAnswersLoading } = useCollection<Answer>(userAnswersQuery);
     
-    const questionIdsForAnswers = useMemo(() => userAnswers ? [...new Set(userAnswers.map(a => a.questionId))] : [], [userAnswers]);
+    // Fetch ALL questions once, and we'll filter them client-side.
+    // This is more robust than a large 'in' query which has a limit of 30.
+    const allQuestionsQuery = useMemoFirebase(() => firestore ? collection(firestore, 'questions') : null, [firestore]);
+    const { data: allQuestions, isLoading: areAllQuestionsLoading } = useCollection<Question>(allQuestionsQuery);
 
-    const answersQuestionsQuery = useMemoFirebase(() => {
-        if (!firestore || !questionIdsForAnswers || questionIdsForAnswers.length === 0) return null;
-        // Firestore 'in' queries are limited to 30 elements.
-        const safeQuestionIds = questionIdsForAnswers.slice(0, 30);
-        return query(collection(firestore, 'questions'), where('__name__', 'in', safeQuestionIds));
-    }, [firestore, questionIdsForAnswers]);
-
-    const { data: questionsForAnswers, isLoading: areAnswerQuestionsLoading } = useCollection<Question>(answersQuestionsQuery);
+    const questionsForAnswersMap = useMemo(() => {
+        if (!allQuestions) return new Map<string, Question>();
+        return new Map(allQuestions.map(q => [q.id, q]));
+    }, [allQuestions]);
 
 
-    if (isProfileLoading || !userProfile) {
+    if (isProfileLoading) {
         return (
             <div className="space-y-8">
                 <ProfileHeaderSkeleton />
@@ -124,6 +127,11 @@ export default function ProfilePage() {
             </div>
         )
     }
+
+    if (!userProfile) {
+        notFound();
+    }
+
 
     return (
         <div className="space-y-8">
@@ -152,14 +160,14 @@ export default function ProfilePage() {
                     )}
                 </TabsContent>
                 <TabsContent value="answers" className="mt-6">
-                    {areAnswersLoading || areAnswerQuestionsLoading ? (
+                    {areAnswersLoading || areAllQuestionsLoading ? (
                          <div className="flex justify-center items-center h-40">
                             <LoaderCircle className="h-8 w-8 animate-spin text-primary" />
                         </div>
-                    ) : userAnswers && userAnswers.length > 0 && questionsForAnswers ? (
+                    ) : userAnswers && userAnswers.length > 0 ? (
                         <div className="space-y-4">
                             {userAnswers.map(a => {
-                                const relatedQuestion = questionsForAnswers.find(q => q.id === a.questionId);
+                                const relatedQuestion = questionsForAnswersMap.get(a.questionId);
                                 return <AnswerItem key={a.id} answer={a} question={relatedQuestion} />
                             })}
                         </div>
@@ -171,3 +179,4 @@ export default function ProfilePage() {
         </div>
     );
 }
+

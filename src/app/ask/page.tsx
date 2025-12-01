@@ -1,3 +1,4 @@
+
 "use client";
 
 import { Button } from "@/components/ui/button";
@@ -28,6 +29,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useUser } from "@/firebase";
 import { postQuestion } from "../actions";
 import { LoaderCircle } from "lucide-react";
+import { useEffect } from "react";
 
 const formSchema = z.object({
   title: z.string().min(10, "Title must be at least 10 characters long.").max(150, "Title cannot exceed 150 characters."),
@@ -48,6 +50,12 @@ export default function AskQuestionPage() {
       tags: "",
     },
   });
+
+  useEffect(() => {
+    if (!isUserLoading && !user) {
+      router.push('/login');
+    }
+  }, [user, isUserLoading, router]);
 
   async function onSubmit(values: z.infer<typeof formSchema>) {
     if (!user) {
@@ -82,17 +90,12 @@ export default function AskQuestionPage() {
     }
   }
 
-  if (isUserLoading) {
+  if (isUserLoading || !user) {
     return (
-        <div className="flex justify-center items-center h-full">
+        <div className="flex justify-center items-center h-[calc(100vh-10rem)]">
             <LoaderCircle className="h-8 w-8 animate-spin text-primary" />
         </div>
     )
-  }
-
-  if (!user) {
-    router.push('/login');
-    return null;
   }
 
   return (

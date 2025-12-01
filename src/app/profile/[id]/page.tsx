@@ -2,7 +2,7 @@
 'use client';
 import { notFound, useParams } from 'next/navigation';
 import { useDoc, useFirestore, useMemoFirebase } from '@/firebase';
-import { doc, collection, query, where, getDocs, documentId, orderBy, Query, DocumentData } from 'firebase/firestore';
+import { doc, collection, query, where, orderBy } from 'firebase/firestore';
 import type { User, Question, Answer } from '@/lib/types';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -11,8 +11,8 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Calendar, HelpCircle, MessageCircle, LoaderCircle } from 'lucide-react';
 import Link from 'next/link';
 import { Separator } from '@/components/ui/separator';
-import { useMemo, useEffect, useState } from 'react';
 import { WithId, useCollection } from '@/firebase/firestore/use-collection';
+import { useMemo } from 'react';
 
 const ProfileHeaderSkeleton = () => (
   <div className="flex items-center space-x-6">
@@ -70,7 +70,7 @@ const QuestionItem = ({ question }: { question: WithId<Question> }) => (
     </Link>
 );
 
-const AnswerItem = ({ answer, question }: { answer: WithId<Answer>; question: Question | undefined }) => {
+const AnswerItem = ({ answer, question }: { answer: WithId<Answer>; question: WithId<Question> | undefined }) => {
     if (!question) {
         return (
             <Card>
@@ -103,11 +103,6 @@ const AnswerItem = ({ answer, question }: { answer: WithId<Answer>; question: Qu
     );
 };
 
-type AnswersState = {
-    isLoading: boolean;
-    answers: WithId<Answer>[];
-    questions: Map<string, Question>;
-}
 
 export default function ProfilePage() {
     const { id } = useParams();
@@ -117,65 +112,25 @@ export default function ProfilePage() {
     const { data: userProfile, isLoading: isProfileLoading } = useDoc<User>(userProfileRef);
 
     const userQuestionsQuery = useMemoFirebase(() => firestore && id ? query(collection(firestore, 'questions'), where('userId', '==', id), orderBy('creationDate', 'desc')) : null, [firestore, id]);
-    const { data: userQuestions, isLoading: areQuestionsLoading } = useCollection<Question>(userQuestionsQuery);
+    const { data: userQuestions, isLoading: areQuestionsLoading } = useCollection<WithId<Question>>(userQuestionsQuery);
     
-    const [answersState, setAnswersState] = useState<AnswersState>({
-        isLoading: true,
-        answers: [],
-        questions: new Map(),
-    });
+    const userAnswersQuery = useMemoFirebase(() => firestore && id ? query(collection(firestore, 'answers'), where('userId', '==', id), orderBy('submissionDate', 'desc')) : null, [firestore, id]);
+    const { data: userAnswers, isLoading: areAnswersLoading } = useCollection<WithId<Answer>>(userAnswersQuery);
 
-    useEffect(() => {
-        if (!firestore || !id) return;
+    const allQuestionsQuery = useMemoFirebase(() => firestore ? collection(firestore, 'questions') : null, [firestore]);
+    const { data: allQuestions, isLoading: areAllQuestionsLoading } = useCollection<WithId<Question>>(allQuestionsQuery);
 
-        const fetchAnswersAndQuestions = async () => {
-            setAnswersState(s => ({ ...s, isLoading: true }));
+    const questionsById = useMemo(() => {
+        if (!allQuestions) return new Map<string, WithId<Question>>();
+        return allQuestions.reduce((acc, q) => {
+            acc.set(q.id, q);
+            return acc;
+        }, new Map<string, WithId<Question>>());
+    }, [allQuestions]);
 
-            try {
-                // 1. Fetch all answers by the user
-                const answersQuery = query(collection(firestore, 'answers'), where('userId', '==', id), orderBy('submissionDate', 'desc'));
-                const answersSnapshot = await getDocs(answersQuery);
-                const userAnswers = answersSnapshot.docs.map(d => ({ ...d.data(), id: d.id })) as WithId<Answer>[];
+    const isLoading = isProfileLoading || areQuestionsLoading || areAnswersLoading || areAllQuestionsLoading;
 
-                if (userAnswers.length === 0) {
-                     setAnswersState({ isLoading: false, answers: [], questions: new Map() });
-                     return;
-                }
-                
-                // 2. Get unique question IDs from the answers
-                const questionIds = [...new Set(userAnswers.map(a => a.questionId))];
-                
-                // 3. Fetch all questions related to those answers
-                // Use batched queries if you expect more than 30 questions.
-                const questionsMap = new Map<string, Question>();
-                const questionPromises = [];
-                for (let i = 0; i < questionIds.length; i += 30) {
-                    const chunk = questionIds.slice(i, i + 30);
-                    questionPromises.push(
-                        getDocs(query(collection(firestore, 'questions'), where(documentId(), 'in', chunk)))
-                    );
-                }
-                
-                const questionSnapshots = await Promise.all(questionPromises);
-                questionSnapshots.forEach(snap => {
-                    snap.forEach(doc => {
-                        questionsMap.set(doc.id, { id: doc.id, ...doc.data() } as Question);
-                    });
-                });
-                
-                setAnswersState({ isLoading: false, answers: userAnswers, questions: questionsMap });
-
-            } catch (error) {
-                console.error("Error fetching user answers and questions:", error);
-                setAnswersState(s => ({ ...s, isLoading: false }));
-            }
-        };
-
-        fetchAnswersAndQuestions();
-
-    }, [firestore, id]);
-
-    if (isProfileLoading) {
+    if (isLoading) {
         return (
             <div className="space-y-8">
                 <ProfileHeaderSkeleton />
@@ -187,9 +142,14 @@ export default function ProfilePage() {
         )
     }
 
-    if (!userProfile) {
+    if (!isProfileLoading && !userProfile) {
         return notFound();
     }
+    
+    if (!userProfile) {
+        return null; // Should be handled by the loading state or notFound
+    }
+
 
     return (
         <div className="space-y-8">
@@ -201,7 +161,7 @@ export default function ProfilePage() {
                         <HelpCircle className="mr-2 h-4 w-4" /> Questions ({userQuestions?.length || 0})
                     </TabsTrigger>
                     <TabsTrigger value="answers">
-                        <MessageCircle className="mr-2 h-4 w-4" /> Answers ({answersState.answers.length || 0})
+                        <MessageCircle className="mr-2 h-4 w-4" /> Answers ({userAnswers?.length || 0})
                     </TabsTrigger>
                 </TabsList>
                 <TabsContent value="questions" className="mt-6">
@@ -218,14 +178,14 @@ export default function ProfilePage() {
                     )}
                 </TabsContent>
                 <TabsContent value="answers" className="mt-6">
-                    {answersState.isLoading ? (
+                    {areAnswersLoading || areAllQuestionsLoading ? (
                          <div className="flex justify-center items-center h-40">
                             <LoaderCircle className="h-8 w-8 animate-spin text-primary" />
                         </div>
-                    ) : answersState.answers.length > 0 ? (
+                    ) : userAnswers && userAnswers.length > 0 ? (
                         <div className="space-y-4">
-                            {answersState.answers.map(a => {
-                                const relatedQuestion = answersState.questions.get(a.questionId);
+                            {userAnswers.map(a => {
+                                const relatedQuestion = questionsById.get(a.questionId);
                                 return <AnswerItem key={a.id} answer={a} question={relatedQuestion} />
                             })}
                         </div>
@@ -237,3 +197,4 @@ export default function ProfilePage() {
         </div>
     );
 }
+

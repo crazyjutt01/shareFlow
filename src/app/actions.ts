@@ -3,7 +3,20 @@
 import { summarizeTopAnswer } from "@/ai/flows/summarize-top-answer";
 import { z } from "zod";
 import { addDoc, collection, serverTimestamp } from "firebase/firestore";
-import { getSdks } from "@/firebase/server";
+import { firebaseConfig } from '@/firebase/config';
+import { initializeApp, getApp, getApps, type FirebaseApp } from 'firebase/app';
+import { getAuth, type Auth } from 'firebase/auth';
+import { getFirestore, type Firestore } from 'firebase/firestore';
+
+
+// Server-side Firebase initialization
+let firebaseApp: FirebaseApp;
+if (!getApps().length) {
+  firebaseApp = initializeApp(firebaseConfig);
+} else {
+  firebaseApp = getApp();
+}
+const firestore: Firestore = getFirestore(firebaseApp);
 
 const summarySchema = z.object({
   questionTitle: z.string(),
@@ -44,8 +57,6 @@ export async function postQuestion(formData: FormData) {
             tags: formData.get('tags'),
             userId: formData.get('userId'),
         });
-
-        const { firestore } = getSdks();
         
         await addDoc(collection(firestore, 'questions'), {
             userId,
@@ -78,8 +89,6 @@ export async function postAnswer(formData: FormData) {
             questionId: formData.get('questionId'),
             userId: formData.get('userId'),
         });
-
-        const { firestore } = getSdks();
 
         await addDoc(collection(firestore, 'answers'), {
             questionId,

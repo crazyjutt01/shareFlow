@@ -132,6 +132,7 @@ export default function ProfilePage() {
             setAnswersState(s => ({ ...s, isLoading: true }));
 
             try {
+                // 1. Fetch all answers by the user
                 const answersQuery = query(collection(firestore, 'answers'), where('userId', '==', id), orderBy('submissionDate', 'desc'));
                 const answersSnapshot = await getDocs(answersQuery);
                 const userAnswers = answersSnapshot.docs.map(d => ({ ...d.data(), id: d.id })) as WithId<Answer>[];
@@ -140,11 +141,13 @@ export default function ProfilePage() {
                      setAnswersState({ isLoading: false, answers: [], questions: new Map() });
                      return;
                 }
-
+                
+                // 2. Get unique question IDs from the answers
                 const questionIds = [...new Set(userAnswers.map(a => a.questionId))];
+                
+                // 3. Fetch all questions related to those answers
+                // Use batched queries if you expect more than 30 questions.
                 const questionsMap = new Map<string, Question>();
-
-                // Firestore 'in' query limit is 30. We need to batch.
                 const questionPromises = [];
                 for (let i = 0; i < questionIds.length; i += 30) {
                     const chunk = questionIds.slice(i, i + 30);
@@ -185,7 +188,7 @@ export default function ProfilePage() {
     }
 
     if (!userProfile) {
-        notFound();
+        return notFound();
     }
 
     return (

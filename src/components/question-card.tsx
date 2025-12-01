@@ -39,20 +39,6 @@ const AuthorInfo = ({ userId }: { userId: string }) => {
     )
 }
 
-const AnswerCount = ({ questionId }: { questionId: string }) => {
-    const firestore = useFirestore();
-    const answersQuery = useMemoFirebase(() => (firestore && questionId) ? query(collection(firestore, 'answers'), where('questionId', '==', questionId)) : null, [firestore, questionId]);
-    const { data: answers, isLoading } = useCollection(answersQuery);
-
-    return (
-        <div className="flex items-center" title="Answers">
-            <MessageSquare className="mr-1 h-4 w-4" />
-            {isLoading ? '...' : answers?.length || 0}
-        </div>
-    )
-}
-
-
 interface QuestionCardProps {
   question: Question;
 }
@@ -81,7 +67,6 @@ export default function QuestionCard({ question }: QuestionCardProps) {
               <ArrowUp className="mr-1 h-4 w-4" />
               {question.votes}
             </div>
-            <AnswerCount questionId={question.id} />
             <AuthorInfo userId={question.userId} />
           </div>
         </div>

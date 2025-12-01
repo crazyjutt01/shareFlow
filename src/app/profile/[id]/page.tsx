@@ -71,7 +71,7 @@ const QuestionItem = ({ question }: { question: Question }) => (
 
 const AnswerItem = ({ answer, question }: { answer: Answer; question: Question | undefined }) => {
     if (!question) {
-        return null; // Or a loading/placeholder state
+        return null;
     }
     return (
         <Link href={`/question/${answer.questionId}#answer-${answer.id}`} className="block">
@@ -105,8 +105,6 @@ export default function ProfilePage() {
     const userAnswersQuery = useMemoFirebase(() => firestore && id ? query(collection(firestore, 'answers'), where('userId', '==', id), orderBy('submissionDate', 'desc')) : null, [firestore, id]);
     const { data: userAnswers, isLoading: areAnswersLoading } = useCollection<Answer>(userAnswersQuery);
     
-    // Fetch ALL questions once, and we'll filter them client-side.
-    // This is more robust than a large 'in' query which has a limit of 30.
     const allQuestionsQuery = useMemoFirebase(() => firestore ? collection(firestore, 'questions') : null, [firestore]);
     const { data: allQuestions, isLoading: areAllQuestionsLoading } = useCollection<Question>(allQuestionsQuery);
 
@@ -115,8 +113,7 @@ export default function ProfilePage() {
         return new Map(allQuestions.map(q => [q.id, q]));
     }, [allQuestions]);
 
-
-    if (isProfileLoading) {
+    if (isProfileLoading || (!userProfile && isProfileLoading)) {
         return (
             <div className="space-y-8">
                 <ProfileHeaderSkeleton />
@@ -179,4 +176,3 @@ export default function ProfilePage() {
         </div>
     );
 }
-

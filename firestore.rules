@@ -1,3 +1,4 @@
+
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -25,7 +26,12 @@ service cloud.firestore {
     }
 
     match /answers/{answerId} {
-      allow read, list: if true;
+      allow read: if true;
+
+      // Allow listing answers only if filtered by questionId or userId
+      allow list: if request.query.where != null &&
+                     request.query.where.size() == 1 &&
+                     request.query.where[0].fieldPath in ['questionId', 'userId'];
 
       allow create: if isSignedIn() &&
         request.resource.data.userId == request.auth.uid;

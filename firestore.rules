@@ -14,23 +14,21 @@ service cloud.firestore {
     match /users/{userId} {
       allow read: if true;
       allow create: if isOwner(userId);
-      // Allow users to update only their own username by checking that other sensitive fields are not changed.
       allow update: if isOwner(userId) && request.resource.data.email == resource.data.email && request.resource.data.registrationDate == resource.data.registrationDate;
       allow delete: if isOwner(userId);
     }
 
     match /questions/{questionId} {
       allow read: if true;
-      // Allow list reads if querying by tags, by a list of document IDs (for profile page), or by user ID
       allow list: if request.query.keys().hasAny(['where', 'limit']) &&
                    (request.query.where[0].fieldPath == 'tags' || request.query.where[0].fieldPath == '__name__' || request.query.where[0].fieldPath == 'userId');
       allow create: if isSignedIn() &&
         request.resource.data.userId == request.auth.uid;
-      // Allow update if user is the owner and is only changing title or description
-      allow update: if isOwner(resource.data.userId) &&
-                     request.resource.data.keys().hasAll(['title', 'description']) &&
-                     request.resource.data.title is string &&
-                     request.resource.data.description is string;
+      // Allow update for title/description by owner, OR for vote changes by any signed in user
+      allow update: if isSignedIn() && (
+        (isOwner(resource.data.userId) && request.resource.data.keys().hasAll(['title', 'description'])) ||
+        (request.resource.data.keys().hasOnly(['votes']) && request.resource.data.votes == resource.data.votes + 1)
+      );
       allow delete: if isOwner(resource.data.userId);
     }
 

@@ -1,19 +1,29 @@
 'use client';
 
 import { Button } from '@/components/ui/button';
-import { LoaderCircle, Plus } from 'lucide-react';
+import { LoaderCircle, Plus, ArrowDownUp } from 'lucide-react';
 import Link from 'next/link';
 import { QuestionList } from '@/components/question-list';
 import SearchInput from '@/components/search-input';
 import { useCollection, useFirestore, useMemoFirebase } from '@/firebase';
-import { collection, query, where, orderBy } from 'firebase/firestore';
+import { collection, query, where, orderBy, type OrderByDirection } from 'firebase/firestore';
 import type { Question } from '@/lib/types';
 import { useSearchParams } from 'next/navigation';
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+
+type SortOption = 'creationDate' | 'votes';
 
 export default function QuestionsPage() {
   const searchParams = useSearchParams();
   const firestore = useFirestore();
+  const [sortOption, setSortOption] = useState<SortOption>('creationDate');
+  const [sortDirection, setSortDirection] = useState<OrderByDirection>('desc');
 
   const tag = searchParams.get('tag');
   const searchQuery = searchParams.get('query');
@@ -21,17 +31,20 @@ export default function QuestionsPage() {
   const questionsQuery = useMemoFirebase(() => {
     if (!firestore) return null;
     
-    let q = query(collection(firestore, 'questions'), orderBy('creationDate', 'desc'));
+    let q = collection(firestore, 'questions');
+    let finalQuery;
 
     if (tag) {
-      q = query(q, where('tags', 'array-contains', tag));
+      finalQuery = query(q, where('tags', 'array-contains', tag), orderBy(sortOption, sortDirection));
+    } else {
+      finalQuery = query(q, orderBy(sortOption, sortDirection));
     }
     
     // Note: Firestore doesn't support full-text search natively on multiple fields like this.
     // This is a simplified client-side filter. For production, use a search service like Algolia.
     
-    return q;
-  }, [firestore, tag]);
+    return finalQuery;
+  }, [firestore, tag, sortOption, sortDirection]);
 
   const { data: questions, isLoading } = useCollection<Question>(questionsQuery);
   
@@ -60,10 +73,26 @@ export default function QuestionsPage() {
         </Link>
       </div>
 
-      <div className="flex justify-center w-full">
+      <div className="flex justify-between items-center w-full gap-4">
         <div className="w-full max-w-2xl">
           <SearchInput />
         </div>
+        <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+                <Button variant="outline">
+                    <ArrowDownUp className="mr-2 h-4 w-4" />
+                    Sort by
+                </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={() => { setSortOption('creationDate'); setSortDirection('desc'); }}>
+                    Newest
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => { setSortOption('votes'); setSortDirection('desc'); }}>
+                    Most Votes
+                </DropdownMenuItem>
+            </DropdownMenuContent>
+        </DropdownMenu>
       </div>
       
       {isLoading && <div className="flex justify-center py-16"><LoaderCircle className="h-8 w-8 animate-spin text-primary" /></div>}

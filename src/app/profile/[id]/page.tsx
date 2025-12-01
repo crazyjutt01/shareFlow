@@ -142,14 +142,9 @@ export default function ProfilePage() {
         )
     }
 
-    if (!isProfileLoading && !userProfile) {
+    if (!userProfile) {
         return notFound();
     }
-    
-    if (!userProfile) {
-        return null; // Should be handled by the loading state or notFound
-    }
-
 
     return (
         <div className="space-y-8">
@@ -197,4 +192,3 @@ export default function ProfilePage() {
         </div>
     );
 }
-
